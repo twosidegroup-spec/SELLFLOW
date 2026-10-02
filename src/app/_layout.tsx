@@ -99,6 +99,10 @@ export default function RootLayout() {
               <Stack.Screen name="index" />
               <Stack.Screen name="(auth)" />
               <Stack.Screen name="onboarding" />
+              {/* Passcode gate and setup. Both need a valid session; the app
+                  layout redirects to /passcode when a passcode is locked. */}
+              <Stack.Screen name="passcode" />
+              <Stack.Screen name="set-passcode" />
               <Stack.Screen name="(app)" />
               {/* Reachable without a session: a customer filling the order form
                   the seller sent them. */}

@@ -71,14 +71,24 @@ export default function SignUpScreen() {
       if (error) throw AppError.from(error);
 
       if (data.session) {
-        // Email confirmation is off: signed straight in, straight to onboarding.
+        /*
+         * Signed straight in. No navigation here on purpose: the root layout's
+         * `onAuthStateChange` has already fired, and it is what decides between
+         * /onboarding and /(app) from real workspace state. Navigating here too
+         * would race that decision.
+         */
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         return;
       }
 
-      setNotice('Check your email to confirm your account, then sign in.');
+      /*
+       * Only reachable while email confirmation is still enabled on the
+       * Supabase project. It is switched off in production, so this branch
+       * exists as a truthful explanation rather than as the normal path.
+       */
+      setNotice('Your project still requires email confirmation. Check your inbox, then sign in.');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => router.replace('/sign-in'), 1800);
+      setTimeout(() => router.replace('/sign-in'), 2600);
     } catch (error) {
       setFormError(AppError.from(error));
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

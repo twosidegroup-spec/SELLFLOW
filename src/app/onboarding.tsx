@@ -11,7 +11,7 @@
  * can see the product.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Keyboard, View } from 'react-native';
 import { router } from 'expo-router';
 import { ArrowRight, Building2, LogOut, Store } from 'lucide-react-native';
@@ -20,6 +20,7 @@ import * as Haptics from 'expo-haptics';
 import { Button, Input, Screen, Text } from '@/components/ui';
 import { AppError } from '@/lib/errors';
 import { getSupabase } from '@/lib/supabase';
+import { useLock } from '@/store/lock';
 import { useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -39,6 +40,7 @@ export default function OnboardingScreen() {
   const user = useSession((state) => state.user);
   const refreshWorkspace = useSession((state) => state.refreshWorkspace);
   const signOut = useSession((state) => state.signOut);
+  const hydrateLock = useLock((state) => state.hydrate);
 
   const [businessName, setBusinessName] = useState('');
   const [storeName, setStoreName] = useState('');
@@ -47,6 +49,14 @@ export default function OnboardingScreen() {
   const [formError, setFormError] = useState<AppError | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [isFirstBusiness, setIsFirstBusiness] = useState(false);
+  // Read the stored passcode state so the offer is not shown to a seller who
+  // already set one on an earlier install.
+  const [passcodeOffered, setPasscodeOffered] = useState(false);
+
+  useEffect(() => {
+    void hydrateLock(user?.id).then(() => setPasscodeOffered(useLock.getState().hasPasscode));
+  }, [hydrateLock, user?.id]);
 
   function validate(): boolean {
     const next: typeof errors = {};
@@ -83,8 +93,9 @@ export default function OnboardingScreen() {
 
       const result = data as unknown as BootstrapResult;
       // `created: false` means this device already had a business (a retry after
-      // a dropped connection); either way the workspace is now real.
-      void result;
+      // a dropped connection); either way the workspace is now real. Only a
+      // genuinely new business gets the passcode offer.
+      setIsFirstBusiness(result.created);
 
       // Re-read the workspace so the store and role come from the database
       // rather than being guessed here.
@@ -102,7 +113,10 @@ export default function OnboardingScreen() {
       await new Promise((resolve) => setTimeout(resolve, PREPARING_MINIMUM_MS));
       await Promise.all([
         new Promise((resolve) => setTimeout(resolve, Math.max(0, PREPARING_MINIMUM_MS - (Date.now() - startedAt)))),
-        router.replace('/(app)'),
+        // Offer the passcode once the business exists, rather than asking about
+        // security before the seller has seen the product. Only the first
+        // business gets the offer; returning sellers are sent straight in.
+        isFirstBusiness && !passcodeOffered ? router.replace('/set-passcode') : router.replace('/(app)'),
       ]);
     } catch (error) {
       setFormError(AppError.from(error));

@@ -76,6 +76,28 @@ if (!keep) {
   }
 }
 
+/*
+ * Pin the session timezone for every suite that follows.
+ *
+ * The suites model a seller in Asia/Dhaka (migration 0021 makes that the default
+ * store timezone) and express "today" as `current_date`, while inserting rows
+ * with `now()`. Both resolve through the *session* timezone.
+ *
+ * The container defaults to UTC, so between 00:00 and 06:00 Dhaka time
+ * `current_date` is still the previous day while `now()` is already the new one.
+ * Every "today" assertion then reads the wrong business day and fails with
+ * messages like "today revenue should be 10000, got 0".
+ *
+ * That is a real time bomb rather than a flake: it fails for six hours every
+ * night and passes for the other eighteen, which is exactly how a bug ends up
+ * blamed on an unrelated change.
+ *
+ * `ALTER DATABASE` rather than `SET`, because each suite is a separate psql
+ * process and a plain SET would not survive into the next one. It applies to new
+ * connections, which is every suite from here on.
+ */
+psql('Pin session timezone', `alter database ${DB} set timezone = 'Asia/Dhaka';`, { onErrorStop: false });
+
 const migrationsDir = join(process.cwd(), 'supabase', 'migrations');
 const migrations = readdirSync(migrationsDir)
   .filter((name) => name.endsWith('.sql'))
