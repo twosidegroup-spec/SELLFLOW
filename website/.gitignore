@@ -1,0 +1,13 @@
+# Generated build output -- rebuild with `node build.mjs`
+dist/
+
+# Local review output from review.mjs
+.review/
+
+# The APK is a build artifact, not source. Do not commit a 110 MB binary.
+# It is delivered by `node build.mjs` from public/downloads/, which is also
+# gitignored below.
+public/downloads/
+
+# public/assets/ IS tracked: screenshots and brand assets are part of the
+# site. Only the download folder is not.

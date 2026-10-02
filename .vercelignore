@@ -1,0 +1,39 @@
+# Only the built site is deployed.
+#
+# This repository is an Expo app plus a static marketing site, and the Vercel
+# project has buildCommand: null with outputDirectory: website/dist. Everything
+# below is either already copied into dist or irrelevant to a static site, so
+# uploading it would just slow the deploy down.
+#
+# The most important line is website/public/downloads: the universal APK is
+# 110.1 MB and a Vercel Hobby deployment caps static uploads at 100 MB. The APK
+# is served from a GitHub release instead, so the binary must never be uploaded.
+
+# The APK (hosted on a GitHub release; see website/site.config.mjs apkPath)
+website/public/downloads
+website/dist/downloads
+
+# Build output is generated from these; dist already contains the copies.
+website/public/assets
+website/public/*.png
+website/src
+website/*.mjs
+website/README.md
+
+# The Expo application itself is not part of a static marketing site.
+src
+assets
+images
+supabase
+scripts
+docs
+.expo
+ios
+android
+.expo-shared
+
+# Tooling / CI noise
+.github
+.claude
+*.log
+*.tsbuildinfo

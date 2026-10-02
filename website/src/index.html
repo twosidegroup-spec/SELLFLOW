@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>{{name}} — {{tagline}}</title>
+    <meta
+      name="description"
+      content="{{shortDescription}} Download the {{platform}} APK for {{name}} v{{version}}."
+    />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="canonical" href="{{siteUrl}}" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="{{name}}" />
+    <meta property="og:title" content="{{name}} — {{tagline}}" />
+    <meta property="og:description" content="{{shortDescription}}" />
+    <meta property="og:url" content="{{siteUrl}}" />
+    <meta property="og:image" content="{{siteUrl}}assets/img/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="{{name}} — {{tagline}}" />
+    <meta name="twitter:description" content="{{shortDescription}}" />
+    <meta name="twitter:image" content="{{siteUrl}}assets/img/og-image.png" />
+
+    <link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="assets/img/favicon-96.png" sizes="96x96" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-title" content="{{name}}" />
+
+    <link rel="preload" href="assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" as="image" href="assets/img/logo-256.png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+  </head>
+
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <!-- ============================================================ header -->
+    <header class="site-header" data-header>
+      <div class="shell header-inner">
+        <a class="brand" href="#top">
+          <img src="assets/img/logo-72.png" alt="" width="30" height="30" />
+          <span>{{name}}</span>
+        </a>
+
+        <nav class="header-nav" aria-label="Primary" data-section-nav>
+          <a href="#about" data-nav-for="about">Overview</a>
+          <a href="#screens" data-nav-for="screens">Screenshots</a>
+          <a href="#features" data-nav-for="features">Features</a>
+          <a href="#safety" data-nav-for="safety">Data safety</a>
+          <a href="#ratings" data-nav-for="ratings">Ratings</a>
+          <a href="#faq" data-nav-for="faq">FAQ</a>
+        </nav>
+
+        <div class="header-end">
+          <!-- Scrolls to the install section. Deliberately NOT data-download:
+               it does not download the APK, and the download buttons are
+               asserted to all point at the real asset. -->
+          <a class="btn btn-primary" href="#install">Install</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ============================================================= hero -->
+      <section class="hero" id="top">
+        <div class="shell hero-grid">
+          <div class="hero-main">
+            <h1 class="hero-name">{{name}}</h1>
+            <p class="hero-dev">{{developer}}</p>
+            <p class="hero-note">{{category}}</p>
+
+            <!-- Facts divided by hairlines, as a store lists them. -->
+            <div class="hero-stats">
+              <div class="hero-stat" data-rating-block>
+                <b data-rating-value>No ratings yet</b>
+                <span data-rating-count>Be the first to review</span>
+              </div>
+              <div class="hero-stat">
+                <b>{{platform}}</b>
+                <span>Direct APK download</span>
+              </div>
+              <div class="hero-stat">
+                <b>{{apkSizeLabel}}</b>
+                <span>v{{version}} &middot; {{releaseDateShort}}</span>
+              </div>
+            </div>
+
+            <div class="hero-cta">
+              <a class="btn-install" href="{{apkHref}}" download data-download>
+                <span data-download-label>Install</span>
+              </a>
+              <button class="act" type="button" data-share>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+                </svg>
+                <span data-share-label>Share</span>
+              </button>
+              <a class="act" href="#faq">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.3M12 17h.01" />
+                </svg>
+                Help
+              </a>
+            </div>
+
+            <div class="hero-device-note">
+              <span class="dn">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="7" y="2.5" width="10" height="19" rx="2.5" />
+                  <path d="M10.5 18.5h3" />
+                </svg>
+                Available for {{minAndroidVersion}}
+              </span>
+              <span class="dn">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 7.5v9M20 7.5v9M8 5.5l4-2 4 2M8 18.5l4 2 4-2M3 12h18" />
+                </svg>
+                {{abi}}
+              </span>
+            </div>
+          </div>
+
+          <div class="hero-icon">
+            <img src="assets/img/logo-256.png" alt="The {{name}} app icon" width="256" height="256" />
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================================================== screenshot rail -->
+      <section class="section" id="screens">
+        <div class="shell">
+          <div class="rail-wrap">
+            <div class="rail" data-rail>
+              <!-- injected by site.js -->
+            </div>
+            <button class="rail-next" data-rail-next aria-label="Scroll to more screenshots">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+            </button>
+          </div>
+          <p class="prose" style="margin-top: 16px" data-rail-note></p>
+        </div>
+      </section>
+
+      <!-- ============================================================= about -->
+      <section class="section" id="about">
+        <div class="shell two-col">
+          <div>
+            <div class="section-head">
+              <h2>About this app</h2>
+              <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h13M13 6l6 6-6 6" />
+              </svg>
+            </div>
+            <div class="prose" data-about></div>
+
+            <div class="updated">
+              <h3>Updated on</h3>
+              <p>{{releaseDateLabel}}</p>
+            </div>
+
+            <div class="chips" data-categories></div>
+          </div>
+
+          <!-- Right rail. A store shows a content rating here; there is no
+               listing and therefore no rating, so it carries app facts instead. -->
+          <aside class="info-card">
+            <h3>{{appInfoTitle}}</h3>
+            <div data-app-info></div>
+            <p class="info-foot">{{appInfoFootnote}}</p>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ======================================================== data safety -->
+      <section class="section" id="safety">
+        <div class="shell">
+          <div class="section-head">
+            <h2>Data safety</h2>
+            <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h13M13 6l6 6-6 6" />
+            </svg>
+          </div>
+          <p class="prose" data-safety-intro></p>
+          <div class="safety-card" style="margin-top: 24px" data-safety></div>
+
+          <div class="section-head" style="margin-top: 48px">
+            <h2>Why the numbers hold up</h2>
+            <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h13M13 6l6 6-6 6" />
+            </svg>
+          </div>
+          <p class="prose">
+            Data safety is where your records go. This is what decides whether those records are
+            correct at month end. No badges, no certifications — these are the engineering decisions
+            the app is actually built on.
+          </p>
+          <div class="safety-card" style="margin-top: 24px" data-quality id="quality"></div>
+        </div>
+      </section>
+
+      <!-- ======================================================= ratings -->
+      <section class="section" id="ratings">
+        <div class="shell">
+          <div class="section-head">
+            <h2>Ratings and reviews</h2>
+            <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h13M13 6l6 6-6 6" />
+            </svg>
+          </div>
+
+          <div class="section-verify">
+            <div class="pills" role="group" aria-label="Filter reviews by device" data-device-pills>
+              <!-- injected: Phone / Tablet / Desktop, Phone selected -->
+            </div>
+            <p class="verify">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 11v5M12 8h.01" />
+              </svg>
+              <span data-verify-note>SellFlow is a new release, so there are no ratings to verify yet.</span>
+            </p>
+          </div>
+
+          <div data-rating-summary></div>
+
+          <div class="reviews-empty" data-reviews-empty>
+            <div class="stars" aria-hidden="true"></div>
+            <h3>{{name}} is just getting started.</h3>
+            <p>
+              There are no published reviews yet. If you have used the app, your review helps the next
+              seller decide whether it is worth switching.
+            </p>
+            <a class="btn btn-primary" href="#write-review">Write a review</a>
+          </div>
+
+          <div class="reviews" data-review-list hidden></div>
+
+          <div class="write-review" id="write-review">
+            <h3>Write a review</h3>
+            <p class="note">
+              Reviews are moderated before they appear publicly. Submitting stores your review on this
+              device only — there is no public review database connected yet, so it is never counted
+              toward the app&rsquo;s rating.
+            </p>
+            <form class="review-form" data-review-form novalidate>
+              <fieldset class="star-input">
+                <legend>Your rating</legend>
+                <div class="star-row" data-stars role="radiogroup" aria-label="Rating out of 5"></div>
+                <p class="field-error" data-star-error hidden>Please choose a rating.</p>
+              </fieldset>
+
+              <div class="field">
+                <label for="rv-name">Name</label>
+                <input id="rv-name" name="name" type="text" autocomplete="name" maxlength="60" />
+              </div>
+
+              <div class="field">
+                <label for="rv-business">Business type <span class="optional">optional</span></label>
+                <select id="rv-business" name="business">
+                  <option value="">Prefer not to say</option>
+                  <option>Facebook seller</option>
+                  <option>Instagram seller</option>
+                  <option>WhatsApp seller</option>
+                  <option>TikTok seller</option>
+                  <option>Home business</option>
+                  <option>Online store</option>
+                  <option>Other</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="rv-text">Your review</label>
+                <textarea
+                  id="rv-text"
+                  name="review"
+                  rows="4"
+                  maxlength="1200"
+                  placeholder="What does SellFlow save you from? What is still missing?"
+                ></textarea>
+                <p class="field-error" data-text-error hidden>Please write a short review.</p>
+              </div>
+
+              <div class="field field-honeypot" aria-hidden="true">
+                <label for="rv-website">Website</label>
+                <input id="rv-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+              </div>
+
+              <div>
+                <button class="btn btn-primary" type="submit">Submit review</button>
+              </div>
+              <p class="form-status" data-review-status role="status" aria-live="polite"></p>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================================================== features -->
+      <section class="section" id="features">
+        <div class="shell">
+          <div class="section-head">
+            <h2>What&rsquo;s in the app</h2>
+            <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h13M13 6l6 6-6 6" />
+            </svg>
+          </div>
+          <div class="feature-grid" data-features></div>
+
+          <div class="section-head" style="margin-top: 40px">
+            <h2>Built for sellers who sell here</h2>
+            <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h13M13 6l6 6-6 6" />
+            </svg>
+          </div>
+          <div class="chips" data-channels></div>
+        </div>
+      </section>
+
+      <!-- =============================================================== faq -->
+      <section class="section" id="faq">
+        <div class="shell">
+          <div class="section-head">
+            <h2>Common questions</h2>
+            <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h13M13 6l6 6-6 6" />
+            </svg>
+          </div>
+          <div class="faq" data-faq></div>
+        </div>
+      </section>
+
+      <!-- =========================================================== install -->
+      <section class="section" id="install">
+        <div class="shell">
+          <div class="section-head">
+            <h2>Install {{name}}</h2>
+            <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h13M13 6l6 6-6 6" />
+            </svg>
+          </div>
+          <p class="prose">Take your business with you. Download the latest Android APK directly.</p>
+
+          <div class="install-band">
+            <p class="lede">
+              No store and no waiting. You create your business when you open the app — nothing to
+              sign up for before the download.
+            </p>
+            <a class="btn-install" href="{{apkHref}}" download data-download>
+              <span data-download-label>Download APK</span>
+            </a>
+          </div>
+
+          <div class="info-card" style="max-width: 720px">
+            <div data-install-facts></div>
+          </div>
+
+          <p class="install-note">
+            Android may ask you to allow installation from an unknown source, because this APK is
+            distributed directly rather than through Google Play. That prompt comes from Android
+            itself and applies to any app installed outside its store.
+          </p>
+        </div>
+      </section>
+
+      <!-- =========================================================== release -->
+      <section class="section" id="release">
+        <div class="shell">
+          <div class="section-head">
+            <h2>What&rsquo;s new</h2>
+            <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h13M13 6l6 6-6 6" />
+            </svg>
+          </div>
+          <div class="updated" style="margin-top: 0; margin-bottom: 20px">
+            <h3>{{name}} {{version}}</h3>
+            <p>{{releaseChannel}} &middot; {{releaseDateLabel}}</p>
+          </div>
+          <ul class="release-list" data-changelog></ul>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============================================================= footer -->
+    <footer class="site-footer">
+      <div class="shell">
+        <div class="footer-top">
+          <div>
+            <a class="brand" href="#top">
+              <img src="assets/img/logo-72.png" alt="" width="30" height="30" />
+              <span>{{name}}</span>
+            </a>
+            <p class="footer-tagline">{{tagline}}</p>
+            <p class="footer-desc">{{shortDescription}}</p>
+          </div>
+
+          <nav class="footer-nav" aria-label="Footer">
+            <div>
+              <h3>App</h3>
+              <a href="#about">About</a>
+              <a href="#screens">Screenshots</a>
+              <a href="#features">Features</a>
+              <a href="#install">Download</a>
+            </div>
+            <div>
+              <h3>Product</h3>
+              <a href="#safety">Data safety</a>
+              <a href="#ratings">Ratings &amp; reviews</a>
+              <a href="#release">Release notes</a>
+              <a href="#faq">FAQ</a>
+            </div>
+            <div>
+              <h3>Support</h3>
+              <a href="#install">Install help</a>
+              <a href="mailto:{{supportEmail}}">Contact</a>
+              <a href="privacy.html">Privacy</a>
+              <a href="terms.html">Terms</a>
+            </div>
+          </nav>
+        </div>
+
+        <div class="footer-bottom">
+          <p>&copy; {{year}} {{name}}. All rights reserved.</p>
+          <p>{{platform}} &middot; v{{version}} &middot; Direct APK distribution</p>
+        </div>
+      </div>
+    </footer>
+
+    <!-- ============================================================= lightbox -->
+    <div class="lightbox" data-lightbox hidden role="dialog" aria-modal="true" aria-label="Screenshot viewer">
+      <button class="lb-close" data-lb-close aria-label="Close screenshot viewer">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+      <button class="lb-nav lb-prev" data-lb-prev aria-label="Previous screenshot">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+      </button>
+      <button class="lb-nav lb-next" data-lb-next aria-label="Next screenshot">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+      </button>
+      <figure class="lb-figure">
+        <img data-lb-img alt="" />
+        <figcaption data-lb-caption></figcaption>
+      </figure>
+      <p class="lb-counter" data-lb-counter aria-live="polite"></p>
+    </div>
+
+    <!-- Sticky install bar for phones. -->
+    <div class="mobile-bar" data-mobile-bar>
+      <div class="mobile-bar-meta">
+        <img src="assets/img/logo-72.png" alt="" width="32" height="32" />
+        <div>
+          <strong>{{name}} {{version}}</strong>
+          <span>{{apkSizeLabel}} &middot; {{platform}}</span>
+        </div>
+      </div>
+      <a class="btn btn-primary" href="{{apkHref}}" download data-download>
+        <span data-download-label>Install</span>
+      </a>
+    </div>
+
+    <script type="module" src="assets/js/site.js"></script>
+  </body>
+</html>

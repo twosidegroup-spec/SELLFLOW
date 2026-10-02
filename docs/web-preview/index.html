@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SellFlow — development preview</title>
+
+    <style>
+      /*
+       * SellFlow development preview frame.
+       *
+       * This page is a DEVELOPMENT TOOL ONLY. It renders the real Expo web
+       * bundle in an iframe, so what you see is the same React Native component
+       * tree the Android app uses, via react-native-web.
+       *
+       * It lives outside the app on purpose:
+       *   * nothing here is bundled into the Android or iOS build
+       *   * the production app.json web config is untouched
+       *   * Fast Refresh works normally, because the iframe hosts the real
+       *     Metro dev server rather than a copy of anything
+       *
+       * Open the app URL printed by `npm run dev:web`, then add
+       *   ?embed=http://localhost:8081
+       * to this page's address bar.
+       */
+
+      :root {
+        --phone-w: 390px;
+        --phone-h: 844px;
+        --frame-radius: 34px;
+        --shell: #0f172a;
+        --page: #e2e8f0;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page: #020617;
+        }
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--page);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: #0f172a;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 20px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body { color: #e2e8f0; }
+      }
+
+      /* The device. Decorative only: it has pointer-events disabled so it can
+         never intercept a tap meant for the app. */
+      .device {
+        position: relative;
+        width: var(--phone-w);
+        height: var(--phone-h);
+        max-width: 100vw;
+        max-height: calc(100vh - 90px);
+        border-radius: var(--frame-radius);
+        background: #0b1120;
+        padding: 10px;
+        box-shadow:
+          0 0 0 2px #1e293b,
+          0 24px 60px rgba(15, 23, 42, 0.28);
+        pointer-events: none;
+      }
+
+      .device iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        border-radius: calc(var(--frame-radius) - 12px);
+        background: #f8fafc;
+        display: block;
+        pointer-events: auto;
+      }
+
+      .hint {
+        font-size: 12px;
+        line-height: 1.5;
+        opacity: 0.7;
+        text-align: center;
+        max-width: 520px;
+      }
+
+      .hint code {
+        background: rgba(100, 116, 139, 0.18);
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: 11px;
+      }
+
+      .status { font-size: 12px; opacity: 0.8; }
+      .status b { font-weight: 600; }
+    </style>
+  </head>
+
+  <body>
+    <div class="device">
+      <iframe id="app" title="SellFlow development preview"></iframe>
+    </div>
+
+    <div class="status" id="status">Waiting for the dev server…</div>
+
+    <p class="hint">
+      Start it with <code>npm run dev:web</code>, then point this page at
+      <code>?embed=http://localhost:8081</code>. Fast Refresh is the Metro dev
+      server's own — edit a file and the frame updates.
+    </p>
+
+    <script>
+      (function () {
+        var params = new URLSearchParams(location.search);
+        // Default matches the port `npm run dev:web` starts.
+        var target = params.get('embed') || 'http://localhost:8081';
+        var frame = document.getElementById('app');
+        var status = document.getElementById('status');
+
+        frame.src = target;
+        status.innerHTML = 'Previewing <b>' + target + '</b>';
+
+        frame.addEventListener('load', function () {
+          // The dev server is slow on first bundle, so report when it answers.
+          status.innerHTML = 'Connected to <b>' + target + '</b>';
+        });
+      })();
+    </script>
+  </body>
+</html>

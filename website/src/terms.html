@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Terms — {{name}}</title>
+    <meta name="description" content="Terms of use for the {{name}} Android application." />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#0b1220" />
+    <link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="shell header-inner">
+        <a class="brand" href="index.html">
+          <img src="assets/img/logo-128.png" alt="" width="34" height="34" />
+          <span>{{name}}</span>
+        </a>
+        <nav class="header-nav" aria-label="Primary">
+          <a href="index.html#what">What it does</a>
+          <a href="index.html#screens">Screens</a>
+          <a href="index.html#features">Features</a>
+          <a href="index.html#faq">FAQ</a>
+        </nav>
+        <a class="btn btn-primary btn-sm header-cta" href="index.html#install">Install</a>
+      </div>
+    </header>
+
+    <main class="section">
+      <div class="shell shell-narrow">
+        <div class="section-head">
+          <p class="kicker">Legal</p>
+          <h1>Terms of use</h1>
+          <p class="lede">
+            These terms cover the {{name}} Android application and this website. They are written in
+            plain language so you know what you are agreeing to.
+          </p>
+        </div>
+
+        <div class="trust-grid" style="grid-template-columns: 1fr; gap: 32px">
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">1. What {{name}} is</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              {{name}} is a business management tool. It helps you record orders, stock, customers,
+              courier information, payments and costs, and to see what your business earns. It does
+              not sell your products, handle your banking, move money on your behalf, or deliver
+              goods.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">2. Your account</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              You are responsible for the accuracy of the information you enter and for keeping your
+              login details secure. Each business you create is separated from every other business
+              on the platform; you are responsible for the activity in your own account.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">3. Your data belongs to you</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              Your business records are yours. You can export or delete them from inside the app. We
+              claim no ownership over the information you enter.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">4. Financial figures are calculations</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              Revenue, cost and profit figures shown by {{name}} are calculated from the data you
+              enter and from the costs you record. They are a tool for running your business, not
+              accounting advice, and are not a substitute for a qualified accountant.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">5. Courier information</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              Courier tracking reflects what the courier reports, plus what you record yourself. Some
+              couriers do not provide automatic updates, so {{name}} records the source of every
+              status change to keep the difference clear. {{name}} is not a courier and does not
+              guarantee delivery.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">6. Availability</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              {{name}} is currently a preview release. Features may change, and some may be
+              incomplete. We aim to keep the service running but do not promise uninterrupted
+              availability. You should keep your own records of anything critical.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">7. Acceptable use</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              Do not use {{name}} to store or distribute unlawful content, to attempt to access
+              another business's data, or to interfere with the service. Public order links must
+              only be sent to your own customers.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">8. Limitation of liability</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              To the extent permitted by law, {{name}} is provided as-is. We are not liable for
+              business decisions you make based on the information shown in the app, for lost profits,
+              or for data you entered incorrectly. Keep your own records.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">9. Changes to these terms</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              These terms may be updated as the product changes. The date below reflects the version
+              of the terms that applies to the {{version}} release.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">10. Contact</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              Questions about these terms: <a href="mailto:{{supportEmail}}" style="color: var(--primary)">{{supportEmail}}</a>.
+            </p>
+          </section>
+        </div>
+
+        <p style="margin-top: 48px; color: var(--text-3); font-size: 14px">
+          Last updated {{releaseDateLabel}}.
+        </p>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell">
+        <div class="footer-bottom" style="border-top: 0; padding-top: 0">
+          <p>&copy; {{year}} {{name}}. All rights reserved.</p>
+          <p><a href="index.html">Back to {{name}}</a></p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

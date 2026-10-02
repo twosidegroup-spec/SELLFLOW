@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy — {{name}}</title>
+    <meta name="description" content="How {{name}} handles your data." />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#0b1220" />
+    <link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="shell header-inner">
+        <a class="brand" href="index.html">
+          <img src="assets/img/logo-128.png" alt="" width="34" height="34" />
+          <span>{{name}}</span>
+        </a>
+        <nav class="header-nav" aria-label="Primary">
+          <a href="index.html#what">What it does</a>
+          <a href="index.html#screens">Screens</a>
+          <a href="index.html#features">Features</a>
+          <a href="index.html#faq">FAQ</a>
+        </nav>
+        <a class="btn btn-primary btn-sm header-cta" href="index.html#install">Install</a>
+      </div>
+    </header>
+
+    <main class="section">
+      <div class="shell shell-narrow">
+        <div class="section-head">
+          <p class="kicker">Legal</p>
+          <h1>Privacy</h1>
+          <p class="lede">
+            Plainly written, because a privacy policy nobody can read is not a privacy policy.
+          </p>
+        </div>
+
+        <div class="trust-grid" style="grid-template-columns: 1fr; gap: 32px">
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">What we store</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              {{name}} stores the business information you enter: your products and stock levels,
+              orders, customer names and contact details, courier and tracking information, payments,
+              expenses and your account credentials. That is the data needed to run your business,
+              and {{name}} does not collect anything else.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">Where it is kept</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              Your records are stored in a hosted PostgreSQL database. Every query is scoped to your
+              own business, and that isolation is enforced in the database with row-level security
+              rather than only in the app.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">Your account credentials</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              Passwords are hashed before they are stored and are never recoverable in plain text.
+              The mobile application ships with only a public, read-restricted API key; privileged
+              access stays on the server and is never included in the app.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">On your device</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              The app caches data locally so it can work through a lost connection, and queues
+              changes until they can be sent. Clearing the app or uninstalling it removes that local
+              cache. Cached data stays on your device.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">Third parties</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              {{name}} does not sell your data and does not share it for advertising. If courier
+              status information is shared with a courier to track a parcel, it is only what that
+              courier needs to identify and move your shipment.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">Deletion</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              You can archive and delete products and customers from inside the app. To request
+              deletion of your account and its records, contact
+              <a href="mailto:{{supportEmail}}" style="color: var(--primary)">{{supportEmail}}</a>.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">Reviews on this website</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              The review form on this site has no public database connected to it. A review you
+              submit is stored in your own browser only and is not published or shared. No review is
+              ever displayed here unless it has been submitted and moderated.
+            </p>
+          </section>
+
+          <section>
+            <h2 style="font-size: 19px; margin-bottom: 8px">Contact</h2>
+            <p style="color: var(--text-2); line-height: 1.65">
+              Questions about your data: <a href="mailto:{{supportEmail}}" style="color: var(--primary)">{{supportEmail}}</a>.
+            </p>
+          </section>
+        </div>
+
+        <p style="margin-top: 48px; color: var(--text-3); font-size: 14px">
+          Last updated {{releaseDateLabel}}. This page describes the software as it actually behaves
+          in the {{version}} release.
+        </p>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell">
+        <div class="footer-bottom" style="border-top: 0; padding-top: 0">
+          <p>&copy; {{year}} {{name}}. All rights reserved.</p>
+          <p><a href="index.html">Back to {{name}}</a></p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

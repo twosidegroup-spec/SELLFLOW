@@ -1,0 +1,95 @@
+# ===========================================================================
+# SellFlow :: Supabase project configuration
+#
+# Controls the Edge Function deploy, the local Supabase stack, and the auth
+# redirect allow-list. It does NOT contain any secret: credentials are supplied
+# per-environment and live in Supabase Vault.
+#
+# Link this to a real project once, with:
+#   npx supabase login
+#   npx supabase link --project-ref <your-project-ref>
+#
+# Then apply the schema and deploy the functions:
+#   npx supabase db push
+#   npx supabase functions deploy pathao-shipment
+#   npx supabase functions deploy pathao-webhook
+# ===========================================================================
+
+# The existing SellFlow Supabase project. Linked with:
+#   npx supabase link --project-ref ggnkvlnnfgvyxwlbjfqx
+# Only the reference is recorded here. No credential of any kind is stored in
+# this file -- API keys live in EAS environment variables and, for the courier,
+# in Supabase Vault.
+project_id = "ggnkvlnnfgvyxwlbjfqx"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+# Row Level Security is mandatory. `profiles` is deliberately NOT in the exposed
+# list: it is reachable only through a table that has its own policies.
+extra_tables = ["public.organizations", "public.organization_members", "public.stores"]
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+# Product images are the only intended upload target in V1.
+file_size_limit = "5MiB"
+
+[auth]
+enabled = true
+site_url = "sellflow://"
+additional_redirect_urls = ["sellflow://", "sellflow://sign-in", "sellflow://onboarding"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+# Password reset and email confirmation both deep-link back into the app.
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+# Required before a shipped build can accept real users. Left true here so a
+# reviewer of this file cannot mistake a development setting for a release one.
+enable_confirmations = true
+
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+inspector_port = 8083
+
+# ---------------------------------------------------------------------------
+# Pathao credentials live here, NOT in the repository and NOT in the app.
+#
+# Create them once per environment with the service role key:
+#   npx supabase secrets set \
+#     PATHAO_CLIENT_ID=<...> \
+#     PATHAO_CLIENT_SECRET=<...> \
+#     PATHAO_WEBHOOK_SECRET=<...>
+#
+# Or, preferably, store them in Vault and point courier_connections.vault_secret_id
+# at the row. read_vault_secret() is SECURITY DEFINER and granted to service_role
+# only, so the anon key shipped in the app can never obtain these values.
+# ---------------------------------------------------------------------------
+
+[functions.pathao-shipment]
+verify_jwt = true
+
+# The webhook is called by Pathao's servers, which do not carry a Supabase JWT.
+# It authenticates with the shared PATHAO_WEBHOOK_SECRET instead, so JWT
+# verification is disabled here and the secret check is mandatory in code.
+[functions.pathao-webhook]
+verify_jwt = false
