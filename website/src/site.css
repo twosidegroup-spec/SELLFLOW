@@ -242,6 +242,19 @@ ol {
   letter-spacing: -0.015em;
 }
 
+/* Centred variant, for the sections that read as a statement rather than a
+   document: Common questions and Install. */
+.section-head-center {
+  flex-wrap: wrap;
+  justify-content: center;
+  text-align: center;
+  margin-inline: auto;
+}
+
+.section-center {
+  text-align: center;
+}
+
 .arrow {
   width: 22px;
   height: 22px;
@@ -430,6 +443,19 @@ ol {
 
 /* The store's Install button: the single most prominent thing on the page. */
 .btn-install {
+  /*
+   * These three lines are the fix for the label sitting off to the left.
+   * `.btn-install` is used on an <a>, which is display:inline by default and
+   * is blockified to `block` because it is a flex item. Neither inline nor
+   * block is a formatting context, so `justify-content` was silently ignored
+   * and the label sat wherever the inline flow put it -- measured 65px left of
+   * the button's centre. Making it an inline-flex centring context is what
+   * actually centres the text.
+   */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   min-height: 56px;
   min-width: 240px;
   padding-inline: var(--s-xxl);
@@ -889,6 +915,62 @@ ol {
   color: var(--accent);
 }
 
+/* -------------------------------------------------------- channel tiles --- */
+/*
+ * The sales channels carry each platform's real logo in its real brand colour.
+ * A row of words reads as a list; a row of recognisable marks reads as "these
+ * are the places my customers already are", which is the point of the section.
+ */
+.channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-sm);
+  margin-top: var(--s-lg);
+}
+
+.channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 46px;
+  padding: 0 var(--s-md) 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.channel:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.channel-mark {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.channel-mark .brand-mark {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.channel-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+}
+
 /* ----------------------------------------------------------- meta rows --- */
 /* "Updated on", category chips -- the quiet facts block under the description. */
 .facts {
@@ -1000,6 +1082,76 @@ ol {
 }
 
 /* ------------------------------------------------------- ratings block --- */
+/* ------------------------------------------------------- ratings block --- */
+/*
+ * Two columns: the rating and the reviews on the left, the write-a-review form
+ * on the right. Previously the empty state and the form were both 620px blocks
+ * stacked under a full-width heading, which left roughly half the 1280px shell
+ * empty beside them.
+ */
+.ratings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: clamp(28px, 4vw, 56px);
+  align-items: start;
+}
+
+.ratings-main {
+  min-width: 0;
+}
+
+/* Explainer under the reviews. Without it the left column ended well above the
+   form beside it and left a visible void in the middle of the page. */
+.rating-notes {
+  margin-top: var(--s-xxl);
+  padding-top: var(--s-xl);
+  border-top: 1px solid var(--border-soft);
+}
+
+.rating-notes h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: var(--s-md);
+}
+
+.rating-notes ul {
+  display: grid;
+  gap: var(--s-md);
+}
+
+.rating-notes li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: var(--s-md);
+  border-left: 2px solid var(--border-soft);
+  font-size: 14px;
+  line-height: 1.58;
+  color: var(--text-3);
+}
+
+.rating-notes b {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+@media (max-width: 900px) {
+  .ratings-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ratings-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-xl);
+}
+
 .section-verify {
   display: flex;
   align-items: center;
@@ -1469,10 +1621,17 @@ ol {
   color: var(--red-600);
 }
 
-/* ------------------------------------------------------------------ faq --- */
+/* ----------------------------------------------------------------- faq --- */
+/* Centred: the question list is the one place on the page that is purely
+   reading, so it is inset symmetrically rather than hugging the left edge. */
 .faq {
   border-top: 1px solid var(--border-soft);
-  max-width: 820px;
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.faq-center {
+  text-align: left;
 }
 
 .faq-item {
@@ -1584,30 +1743,110 @@ ol {
 }
 
 /* -------------------------------------------------------------- install --- */
-.install-band {
-  display: flex;
-  align-items: center;
-  gap: clamp(20px, 4vw, 48px);
-  flex-wrap: wrap;
-  padding: var(--s-xl) 0 var(--s-sm);
+/*
+ * Reformed into a single centred block: heading, one dominant button, a row of
+ * four fact pills, then the unknown-source note. Previously the lede, the
+ * button, a 720px facts card and the note were four left-aligned strips, which
+ * read as leftovers rather than one closing section.
+ */
+.section-install {
+  background: var(--bg-sunken);
+  border-top: 1px solid var(--border-soft);
 }
 
-.install-band .lede {
-  flex: 1 1 320px;
+.install-reform {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+/*
+ * The heading and the lede are separate flex children here, so `justify-content:
+ * center` on .install-reform put them side by side. The heading needs to sit on
+ * its own line above the lede -- as a column, centred, with the lede under it.
+ */
+.install-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-xs);
+  margin-bottom: var(--s-xl);
+}
+
+/*
+ * The .arrow is a sibling of the h2 inside a flex row, so it ends up on its own
+ * wrapped line. Pull it back next to the heading with a negative margin rather
+ * than restructuring the markup, so the centred heading still matches the arrow
+ * layout every other section uses.
+ */
+.install-head .arrow,
+.section-head-center .arrow {
+  margin-top: -26px;
+}
+
+.install-head .lede {
+  max-width: 52ch;
+  margin: var(--s-xs) 0 0;
+}
+
+.btn-install-lg {
+  min-height: 60px;
+  min-width: 280px;
+  font-size: 17px;
+}
+
+.install-pills {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  width: 100%;
+  margin-top: var(--s-xxl);
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+.install-pills li {
+  padding: var(--s-md) var(--s-sm);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.install-pills b {
   font-size: 15px;
-  color: var(--text-2);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.install-pills span {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+@media (max-width: 640px) {
+  .install-pills {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .install-note {
+  margin-top: var(--s-xl);
+  padding: var(--s-md) var(--s-lg);
   border: 1px solid var(--border-soft);
   border-radius: var(--r-card);
-  background: var(--bg-sunken);
-  padding: var(--s-md) var(--s-lg);
+  background: var(--surface);
   font-size: 13.5px;
   line-height: 1.6;
   color: var(--text-2);
-  margin-top: var(--s-md);
-  max-width: var(--text-col);
+  text-align: left;
+  max-width: 100%;
 }
 
 /* -------------------------------------------------------------- release --- */

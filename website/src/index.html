@@ -211,7 +211,7 @@
         </div>
       </section>
 
-      <!-- ======================================================= ratings -->
+<!-- ======================================================= ratings -->
       <section class="section" id="ratings">
         <div class="shell">
           <div class="section-head">
@@ -221,88 +221,114 @@
             </svg>
           </div>
 
-          <div class="section-verify">
-            <div class="pills" role="group" aria-label="Filter reviews by device" data-device-pills>
-              <!-- injected: Phone / Tablet / Desktop, Phone selected -->
+          <div class="ratings-grid">
+            <!-- Left: the rating itself, then what people wrote. -->
+            <div class="ratings-main">
+              <div class="ratings-toolbar">
+                <div class="pills" role="group" aria-label="Filter reviews by device" data-device-pills>
+                  <!-- injected: Phone / Tablet / Desktop, Phone selected -->
+                </div>
+                <p class="verify">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 11v5M12 8h.01" />
+                  </svg>
+                  <span data-verify-note>SellFlow is a new release, so there are no ratings to verify yet.</span>
+                </p>
+              </div>
+
+              <div data-rating-summary></div>
+
+              <div class="reviews-empty" data-reviews-empty>
+                <div class="stars" aria-hidden="true"></div>
+                <h3>{{name}} is just getting started.</h3>
+                <p>
+                  There are no published reviews yet. If you have used the app, your review helps the
+                  next seller decide whether it is worth switching.
+                </p>
+                <a class="btn btn-primary" href="#write-review">Write a review</a>
+              </div>
+
+              <div class="reviews" data-review-list hidden></div>
+
+              <!-- Fills the column beside the form, and answers the question
+                   an empty rating always raises: why is there nothing here? -->
+              <div class="rating-notes">
+                <h3>How ratings work here</h3>
+                <ul>
+                  <li>
+                    <b>Only from people who installed the app.</b>
+                    There is no way to rate without the APK, so the number cannot be inflated.
+                  </li>
+                  <li>
+                    <b>Every review is read before it appears.</b>
+                    Spam and store-bait get removed rather than published and hidden later.
+                  </li>
+                  <li>
+                    <b>Nothing is pre-seeded.</b>
+                    A new release starts at zero. An average would only mean something once enough
+                    people had actually used it.
+                  </li>
+                </ul>
+              </div>
             </div>
-            <p class="verify">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 11v5M12 8h.01" />
-              </svg>
-              <span data-verify-note>SellFlow is a new release, so there are no ratings to verify yet.</span>
-            </p>
-          </div>
 
-          <div data-rating-summary></div>
+            <!-- Right: the form. Beside the reviews rather than under a
+                 620px column that left half the page empty. -->
+            <aside class="write-review" id="write-review">
+              <h3>Write a review</h3>
+              <p class="note">
+                Reviews are moderated before they appear publicly. Submitting stores your review on
+                this device only — there is no public review database connected yet, so it is never
+                counted toward the app&rsquo;s rating.
+              </p>
+              <form class="review-form" data-review-form novalidate>
+                <fieldset class="star-input">
+                  <legend>Your rating</legend>
+                  <div class="star-row" data-stars role="radiogroup" aria-label="Rating out of 5"></div>
+                  <p class="field-error" data-star-error hidden>Please choose a rating.</p>
+                </fieldset>
 
-          <div class="reviews-empty" data-reviews-empty>
-            <div class="stars" aria-hidden="true"></div>
-            <h3>{{name}} is just getting started.</h3>
-            <p>
-              There are no published reviews yet. If you have used the app, your review helps the next
-              seller decide whether it is worth switching.
-            </p>
-            <a class="btn btn-primary" href="#write-review">Write a review</a>
-          </div>
+                <div class="field">
+                  <label for="rv-name">Name</label>
+                  <input id="rv-name" name="name" type="text" autocomplete="name" maxlength="60" />
+                </div>
 
-          <div class="reviews" data-review-list hidden></div>
+                <div class="field">
+                  <label for="rv-business">Business type <span class="optional">optional</span></label>
+                  <select id="rv-business" name="business">
+                    <option value="">Prefer not to say</option>
+                    <option>Facebook seller</option>
+                    <option>Instagram seller</option>
+                    <option>WhatsApp seller</option>
+                    <option>TikTok seller</option>
+                    <option>Home business</option>
+                    <option>Online store</option>
+                    <option>Other</option>
+                  </select>
+                </div>
 
-          <div class="write-review" id="write-review">
-            <h3>Write a review</h3>
-            <p class="note">
-              Reviews are moderated before they appear publicly. Submitting stores your review on this
-              device only — there is no public review database connected yet, so it is never counted
-              toward the app&rsquo;s rating.
-            </p>
-            <form class="review-form" data-review-form novalidate>
-              <fieldset class="star-input">
-                <legend>Your rating</legend>
-                <div class="star-row" data-stars role="radiogroup" aria-label="Rating out of 5"></div>
-                <p class="field-error" data-star-error hidden>Please choose a rating.</p>
-              </fieldset>
+                <div class="field">
+                  <label for="rv-text">Your review</label>
+                  <textarea
+                    id="rv-text"
+                    name="review"
+                    rows="4"
+                    maxlength="1200"
+                    placeholder="What does SellFlow save you from? What is still missing?"
+                  ></textarea>
+                  <p class="field-error" data-text-error hidden>Please write a short review.</p>
+                </div>
 
-              <div class="field">
-                <label for="rv-name">Name</label>
-                <input id="rv-name" name="name" type="text" autocomplete="name" maxlength="60" />
-              </div>
+                <div class="field field-honeypot" aria-hidden="true">
+                  <label for="rv-website">Website</label>
+                  <input id="rv-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+                </div>
 
-              <div class="field">
-                <label for="rv-business">Business type <span class="optional">optional</span></label>
-                <select id="rv-business" name="business">
-                  <option value="">Prefer not to say</option>
-                  <option>Facebook seller</option>
-                  <option>Instagram seller</option>
-                  <option>WhatsApp seller</option>
-                  <option>TikTok seller</option>
-                  <option>Home business</option>
-                  <option>Online store</option>
-                  <option>Other</option>
-                </select>
-              </div>
-
-              <div class="field">
-                <label for="rv-text">Your review</label>
-                <textarea
-                  id="rv-text"
-                  name="review"
-                  rows="4"
-                  maxlength="1200"
-                  placeholder="What does SellFlow save you from? What is still missing?"
-                ></textarea>
-                <p class="field-error" data-text-error hidden>Please write a short review.</p>
-              </div>
-
-              <div class="field field-honeypot" aria-hidden="true">
-                <label for="rv-website">Website</label>
-                <input id="rv-website" name="website" type="text" tabindex="-1" autocomplete="off" />
-              </div>
-
-              <div>
-                <button class="btn btn-primary" type="submit">Submit review</button>
-              </div>
-              <p class="form-status" data-review-status role="status" aria-live="polite"></p>
-            </form>
+                <button class="btn btn-primary btn-block" type="submit">Submit review</button>
+                <p class="form-status" data-review-status role="status" aria-live="polite"></p>
+              </form>
+            </aside>
           </div>
         </div>
       </section>
@@ -318,59 +344,67 @@
           </div>
           <div class="feature-grid" data-features></div>
 
-          <div class="section-head" style="margin-top: 40px">
-            <h2>Built for sellers who sell here</h2>
-            <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 12h13M13 6l6 6-6 6" />
-            </svg>
-          </div>
-          <div class="chips" data-channels></div>
+<div class="section-head" style="margin-top: 48px">
+              <h2>Built for sellers who sell here</h2>
+              <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h13M13 6l6 6-6 6" />
+              </svg>
+              <p class="lede">
+                SellFlow is made for people running a real business through the channels their
+                customers already use — usually alone, usually from a phone.
+              </p>
+            </div>
+          <div class="channels" data-channels></div>
         </div>
       </section>
 
       <!-- =============================================================== faq -->
       <section class="section" id="faq">
         <div class="shell">
-          <div class="section-head">
-            <h2>Common questions</h2>
-            <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 12h13M13 6l6 6-6 6" />
-            </svg>
+          <div class="section-center">
+            <div class="section-head section-head-center">
+              <h2>Common questions</h2>
+              <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h13M13 6l6 6-6 6" />
+              </svg>
+            </div>
           </div>
-          <div class="faq" data-faq></div>
+          <div class="faq faq-center" data-faq></div>
         </div>
       </section>
 
       <!-- =========================================================== install -->
-      <section class="section" id="install">
+      <section class="section section-install" id="install">
         <div class="shell">
-          <div class="section-head">
-            <h2>Install {{name}}</h2>
-            <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 12h13M13 6l6 6-6 6" />
-            </svg>
-          </div>
-          <p class="prose">Take your business with you. Download the latest Android APK directly.</p>
+          <div class="install-reform">
+            <div class="section-head section-head-center install-head">
+              <h2>Install {{name}}</h2>
+              <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h13M13 6l6 6-6 6" />
+              </svg>
+              <p class="lede">
+                Take your business with you. Download the latest Android APK directly — no store, no
+                waiting, and nothing to sign up for before the download.
+              </p>
+            </div>
 
-          <div class="install-band">
-            <p class="lede">
-              No store and no waiting. You create your business when you open the app — nothing to
-              sign up for before the download.
-            </p>
-            <a class="btn-install" href="{{apkHref}}" download data-download>
+            <a class="btn-install btn-install-lg" href="{{apkHref}}" download data-download>
               <span data-download-label>Download APK</span>
             </a>
-          </div>
 
-          <div class="info-card" style="max-width: 720px">
-            <div data-install-facts></div>
-          </div>
+            <ul class="install-pills">
+              <li><b>v{{version}}</b><span>build {{buildNumber}}</span></li>
+              <li><b>{{platform}}</b><span>{{minAndroidVersion}}</span></li>
+              <li><b>{{apkSizeLabel}}</b><span>{{abi}}</span></li>
+              <li><b>Direct APK</b><span>not from Google Play</span></li>
+            </ul>
 
-          <p class="install-note">
-            Android may ask you to allow installation from an unknown source, because this APK is
-            distributed directly rather than through Google Play. That prompt comes from Android
-            itself and applies to any app installed outside its store.
-          </p>
+            <p class="install-note">
+              Android may ask you to allow installation from an unknown source, because this APK is
+              distributed directly rather than through Google Play. That prompt comes from Android
+              itself and applies to any app installed outside its store.
+            </p>
+          </div>
         </div>
       </section>
 

@@ -568,12 +568,24 @@ export const appInfo = {
     'Distributed directly rather than through Google Play, so this APK is not covered by a Play Store content rating.',
 };
 
+/**
+ * Sales channels.
+ *
+ * `brand` marks the four social channels and carries an official brand mark
+ * with its real colour, so the row reads as the platforms sellers actually use
+ * rather than a list of words. The rest are not brands and get a neutral glyph.
+ */
 export const channels = [
-  'Facebook',
-  'Instagram',
-  'WhatsApp',
-  'TikTok',
-  'Websites',
-  'Phone orders',
-  'Messenger',
+  { name: 'Facebook', brand: 'facebook' },
+  { name: 'Instagram', brand: 'instagram' },
+  { name: 'WhatsApp', brand: 'whatsapp' },
+  { name: 'TikTok', brand: 'tiktok' },
+  { name: 'Websites', glyph: 'globe' },
+  { name: 'Phone orders', glyph: 'phone' },
+  { name: 'Messenger', brand: 'messenger' },
 ];
+
+export const audience = {
+  headline: 'Built for sellers who sell here',
+  lede: 'SellFlow is made for people running a real business through the channels their customers already use — usually alone, usually from a phone.',
+};
