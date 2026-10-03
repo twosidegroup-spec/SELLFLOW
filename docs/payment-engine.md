@@ -283,11 +283,95 @@ other because they are opposites. The first is the seller asserting money moved.
 The second publishes an intent for the engine to match a real notification
 against, so the order can be paid without touching the screen again.
 
+## Verification
+
+Two kinds of verification, and they are **not** interchangeable. Conflating them
+is how a project ends up claiming hosted behavioural coverage it does not have.
+
+### Local behavioural verification
+
+Full end-to-end behaviour, against vanilla Postgres with the auth shim.
+
+| Suite | Covers |
+| --- | --- |
+| `verify_payment_engine.sql` | The matching rules and their refusals, idempotency, tenant isolation |
+| `verify_payment_lifecycle.sql` | The whole lifecycle in one flow, the matrix gaps, financial invariants, finance/COD reconciliation, audit semantics |
+| `verify_payment_schema.sql` | 100 structural assertions: indexes, signatures, grants, policies, trust boundary |
+
+`verify_payment_lifecycle.sql` is the controlled end-to-end proof, and it drives
+**only the RPCs the app has**: `bootstrap_business`, `create_payment_account`,
+`create_payment_intent`, `ingest_payment_event`, `match_payment_event`,
+`assign_payment_match`, `create_order`, `record_payment`. Nothing writes a payment
+table directly, because that boundary is what the suite exists to defend.
+
+The lifecycle it proves:
+
+```
+account -> intent -> event -> normalise -> match -> settle
+        -> record_payment -> order payment state -> finance
+```
+
+with the +880 normaliser folding `+8801822000111` onto the connected account, the
+settled amount appearing in `get_finance`, and the automated steps audited as
+`actor_kind = system`.
+
+### Hosted contract verification
+
+Structural and privilege checks against the real project, via
+`npm run db:verify:hosted`. 98 of 100 assertions run; two skip because the
+restricted role cannot reach the objects they need.
+
+**Behavioural suites cannot run on hosted.** `supabase test db --linked` connects
+as a role that cannot write the `auth` schema, and `profiles.id → auth.users` is a
+foreign key, so no fixture can be created. `verify_concurrency` is excluded
+everywhere-hosted because it commits fixtures by design and creates `dblink`.
+
+What hosted *does* prove, and it is worth a lot precisely because it is the
+environment that created the original problem: no `anon` privilege on any payment
+table; `authenticated` read-only including `TRUNCATE`; `PUBLIC` holding no
+`EXECUTE` on any payment function; `anon` and `service_role` unable to execute
+the money functions; and the intended public surface — the customer order link —
+still reachable by `anon`.
+
+### Client boundary
+
+`scripts/payment-boundary.test.mjs` (14 assertions, static) fails the build if:
+
+- any payment table stops being `Insert: never` / `Update: never`
+- any source file writes a payment table directly
+- `features/payments` contains a write call at all
+- an unreviewed payment RPC is introduced
+- `record_payment` is called from anywhere but `features/orders`
+- a payment screen bypasses the feature layer
+- the review queue loses a field needed to explain a refusal
+- an SMS permission or receiver appears in the app
+
+## Registration
+
+Email confirmation is **off**, deliberately. It was documented as off in both
+`sign-up.tsx` and `config.toml` but hosted still had it on — a release step never
+performed. It could not have worked anyway: hosted `site_url` was
+`http://localhost:3000` with no `additional_redirect_urls`, so a confirmation link
+dead-ends on a handset.
+
+`scripts/verify-auth.mjs` proves the intended lifecycle against hosted with a
+throwaway identity that is deleted and confirmed gone: register → session,
+already-confirmed, duplicate refused, bad password refused, unknown user refused,
+login, refresh, reuse detection, logout, re-login. 17/17.
+
+**One documented gap:** password recovery still uses the hosted default
+`site_url` of `http://localhost:3000`, so a recovery email links to localhost.
+Fixing it needs `sellflow://` intent-filter and callback plumbing — a feature, not
+a config change, and out of scope here.
+
 ## What is deliberately not here
 
 - **No SMS permission, receiver or parser.** That is Phase 3, gated on the policy
   work in `docs/google-play-sms-policy.md`. The schema, engine and UI are
-  complete without it, and `source = 'manual'` already works end to end.
+  complete without it, and `source = 'manual'` already works end to end. The
+  adapter's exact contract is written down in
+  `docs/sms-adapter-contract.md` so the boundary is reviewable before any of it
+  exists.
 - **No subscription settlement.** `subscription` intents record and audit
   correctly, but there is no subscription table yet, so nothing pretends to have
   activated anything. The non-order branch of `settle_event_to_intent` is where

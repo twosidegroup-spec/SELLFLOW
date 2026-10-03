@@ -385,6 +385,128 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- 10. Anonymous and service-role access to the payment engine
+--
+-- These are the checks that only mean something on a real Supabase project,
+-- because the defaults that create the risk live there and not on vanilla
+-- Postgres. Migration 0024 exists because of exactly this section.
+--
+-- anon       must reach nothing. It holds no privilege on any payment table and
+--            executes no payment function.
+-- PUBLIC     must hold no EXECUTE on any payment function, or Supabase's default
+--            privileges hand it to anon and service_role again.
+-- service_role must not execute the money functions. It has BYPASSRLS and can
+--            write the tables regardless -- that is inherent to the admin role
+--            and is why the app never ships that key -- but it should not be able
+--            to SETTLE a payment by name without a session.
+-- ---------------------------------------------------------------------------
+
+insert into _c (name, ok, detail)
+select 'anon holds no privilege on ' || t.name,
+       not has_table_privilege('anon', 'public.' || t.name, 'SELECT')
+   and not has_table_privilege('anon', 'public.' || t.name, 'INSERT')
+   and not has_table_privilege('anon', 'public.' || t.name, 'UPDATE')
+   and not has_table_privilege('anon', 'public.' || t.name, 'DELETE')
+   and not has_table_privilege('anon', 'public.' || t.name, 'TRUNCATE'),
+       'no select/insert/update/delete/truncate'
+from (values
+  ('payment_accounts'), ('payment_intents'), ('payment_events'),
+  ('payment_matches'), ('payment_audit_logs')
+) as t(name);
+
+-- authenticated gets SELECT and nothing else, including no TRUNCATE.
+insert into _c (name, ok, detail)
+select t.name || ': authenticated is read-only',
+       has_table_privilege('authenticated', 'public.' || t.name, 'SELECT')
+   and not has_table_privilege('authenticated', 'public.' || t.name, 'INSERT')
+   and not has_table_privilege('authenticated', 'public.' || t.name, 'UPDATE')
+   and not has_table_privilege('authenticated', 'public.' || t.name, 'DELETE')
+   and not has_table_privilege('authenticated', 'public.' || t.name, 'TRUNCATE')
+   and not has_table_privilege('authenticated', 'public.' || t.name, 'TRIGGER'),
+       'select only'
+from (values
+  ('payment_accounts'), ('payment_intents'), ('payment_events'),
+  ('payment_matches'), ('payment_audit_logs')
+) as t(name);
+
+-- No payment function may be reachable through PUBLIC, which is how Supabase's
+-- blanket defaults leak execute rights back to anon and service_role.
+insert into _c (name, ok, detail)
+select 'PUBLIC cannot execute ' || f.sig,
+       not has_function_privilege('public', 'public.' || f.sig, 'EXECUTE'),
+       'revoked from PUBLIC'
+from (values
+  ('create_payment_account(uuid,public.payment_provider,text,text,text)'),
+  ('set_payment_account_status(uuid,public.payment_account_status,boolean)'),
+  ('create_payment_intent(public.payment_intent_type,uuid,uuid,numeric,text,text,timestamptz,uuid)'),
+  ('cancel_payment_intent(uuid,text)'),
+  ('ingest_payment_event(uuid,public.payment_provider,text,text,numeric,text,timestamptz,public.payment_event_source,text,uuid,text)'),
+  ('match_payment_event(uuid)'),
+  ('assign_payment_match(uuid,uuid,text)'),
+  ('reject_payment_match(uuid,text)'),
+  ('expire_stale_payment_intents()'),
+  ('settle_event_to_intent(public.payment_events,public.payment_intents,uuid,public.payment_audit_actor)'),
+  ('score_payment_match(public.payment_events,public.payment_intents)'),
+  ('log_payment_audit(uuid,public.payment_audit_actor,public.payment_audit_action,uuid,uuid,uuid,uuid,text,uuid,jsonb)')
+) as f(sig);
+
+-- anon executes no payment function, including the two pure helpers.
+insert into _c (name, ok, detail)
+select 'anon cannot execute ' || f.sig,
+       not has_function_privilege('anon', 'public.' || f.sig, 'EXECUTE'),
+       'denied'
+from (values
+  ('ingest_payment_event(uuid,public.payment_provider,text,text,numeric,text,timestamptz,public.payment_event_source,text,uuid,text)'),
+  ('match_payment_event(uuid)'),
+  ('assign_payment_match(uuid,uuid,text)'),
+  ('create_payment_account(uuid,public.payment_provider,text,text,text)'),
+  ('settle_event_to_intent(public.payment_events,public.payment_intents,uuid,public.payment_audit_actor)'),
+  ('payment_normalize_bk_number(text)'),
+  ('payment_provider_method(public.payment_provider)')
+) as f(sig);
+
+-- service_role must not settle a payment by name. Conditional: the role is
+-- Supabase-created and absent from the local verification database.
+insert into _c (name, ok, detail)
+select 'service_role cannot execute ' || f.sig,
+       case
+         when not exists (select 1 from pg_roles where rolname = 'service_role') then true
+         else not has_function_privilege('service_role', 'public.' || f.sig, 'EXECUTE')
+       end,
+       case
+         when not exists (select 1 from pg_roles where rolname = 'service_role')
+           then 'skipped: role absent on local verification'
+         else 'denied'
+       end
+from (values
+  ('settle_event_to_intent(public.payment_events,public.payment_intents,uuid,public.payment_audit_actor)'),
+  ('ingest_payment_event(uuid,public.payment_provider,text,text,numeric,text,timestamptz,public.payment_event_source,text,uuid,text)'),
+  ('match_payment_event(uuid)'),
+  ('assign_payment_match(uuid,uuid,text)'),
+  ('score_payment_match(public.payment_events,public.payment_intents)'),
+  ('log_payment_audit(uuid,public.payment_audit_actor,public.payment_audit_action,uuid,uuid,uuid,uuid,text,uuid,jsonb)')
+) as f(sig);
+
+-- The intended PUBLIC surface must survive. This is the counterweight to the
+-- revokes above: tightening the payment ledger is only correct if the features
+-- that are supposed to be public still are. The order link a customer fills in is
+-- reached with no session at all, entirely through these two functions.
+insert into _c (name, ok, detail)
+select 'public order link stays reachable by anon: ' || f.sig,
+       has_function_privilege('anon', 'public.' || f.sig, 'EXECUTE'),
+       'intended public surface'
+from (values
+  ('public_order_form(text)'),
+  ('submit_order_request(text,jsonb)')
+) as f(sig);
+
+insert into _c (name, ok, detail)
+select 'order form tables stay closed to anon: ' || t.name,
+       not has_table_privilege('anon', 'public.' || t.name, 'SELECT'),
+       'reachable only through the RPC'
+from (values ('order_forms'), ('order_requests')) as t(name);
+
+-- ---------------------------------------------------------------------------
 -- Report
 -- ---------------------------------------------------------------------------
 
