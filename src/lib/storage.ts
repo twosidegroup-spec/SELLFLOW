@@ -16,6 +16,13 @@ export const StorageKeys = {
   pendingMutations: `${PREFIX}pending-mutations`,
   lastSyncAt: `${PREFIX}last-sync`,
   onboardingSeen: `${PREFIX}onboarding-seen`,
+  /**
+   * Normalised payment candidates waiting to be ingested.
+   *
+   * Holds parsed fields only -- provider, amount, reference, numbers, timestamps,
+   * hash. Never a message body: see docs/privacy-sms.md.
+   */
+  pendingSmsEvents: `${PREFIX}pending-sms-events`,
 } as const;
 
 export async function readString(key: string): Promise<string | null> {

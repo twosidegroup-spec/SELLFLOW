@@ -22,6 +22,7 @@ import {
   CircleSlash,
   Inbox,
   Plus,
+  RadioTower,
   ScanLine,
   Smartphone,
   TriangleAlert,
@@ -46,6 +47,8 @@ import {
   usePaymentAccounts,
   usePaymentReview,
 } from '@/features/payments/queries';
+import { useSmsDetectionStatus } from '@/features/payments/sms/hooks';
+import { detectionCopy } from '@/features/payments/sms/status';
 import { useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 import { AppError } from '@/lib/errors';
@@ -62,6 +65,16 @@ export default function PaymentsScreen() {
   const orgId = organization?.id;
   const accounts = usePaymentAccounts(orgId);
   const review = usePaymentReview(orgId);
+  const detection = useSmsDetectionStatus(orgId);
+
+  // Only the tone is derived here; the wording lives with the status itself so the
+  // hub and the detection screen can never say different things.
+  const detectionTone =
+    detection.status === 'waiting' || detection.status === 'confirmed'
+      ? 'success'
+      : detection.status === 'unsupported_platform'
+        ? 'neutral'
+        : 'warning';
 
   useFocusEffect(
     useCallback(() => {
@@ -163,6 +176,44 @@ export default function PaymentsScreen() {
                   onPress={() => router.push('/(app)/payment-review')}
                 />
               ) : null}
+            </View>
+          </Card>
+        </View>
+
+        {/* ------------------------------------------------ Automatic detection
+          Above the accounts, because a seller who connects an account is the one
+          most likely to want to know whether anything is watching it yet. */}
+        <View>
+          <SectionHeader
+            title="Automatic detection"
+            actionLabel="Set up"
+            onActionPress={() => router.push('/(app)/payment-sms')}
+          />
+          <Card>
+            <View style={[styles.detectionRow, { gap: spacing.md }]}>
+              <RowIcon tone={detectionTone}>
+                {detectionTone === 'success' ? (
+                  <RadioTower size={18} color={colors.successStrong} />
+                ) : detectionTone === 'warning' ? (
+                  <TriangleAlert size={18} color={colors.warningStrong} />
+                ) : (
+                  <RadioTower size={18} color={colors.textMuted} />
+                )}
+              </RowIcon>
+
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text variant="subtitle">{detectionCopy(detection.status).title}</Text>
+                <Text variant="caption" tone="muted">
+                  {detectionCopy(detection.status).body}
+                </Text>
+              </View>
+
+              <Button
+                label="Open"
+                size="sm"
+                variant="secondary"
+                onPress={() => router.push('/(app)/payment-sms')}
+              />
             </View>
           </Card>
         </View>
@@ -279,5 +330,6 @@ function HowRow({
 
 const styles = StyleSheet.create({
   reviewRow: { flexDirection: 'row', alignItems: 'center' },
+  detectionRow: { flexDirection: 'row', alignItems: 'center' },
   howRow: { flexDirection: 'row', alignItems: 'flex-start' },
 });

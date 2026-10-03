@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deliberately empty of SMS declarations.
+
+  Every line of the native SMS surface - the RECEIVE_SMS permission and the
+  SMS_RECEIVED receiver - is added by plugins/withSellflowSms.js so the whole
+  manifest diff lives in one reviewable, testable file. A library manifest
+  arriving through autolinking would make that diff implicit, which is exactly
+  what docs/google-play-sms-policy.md forbids.
+
+  This module's manifest exists only so the Android library has one.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

@@ -54,9 +54,21 @@ export async function resolve(specifier, context, nextResolve) {
   const suffix = ownQuery ? `?${ownQuery}` : (parentQuery || '');
 
   // 2. Resolve the `@/` alias. Node does not read tsconfig `paths`, and -- like
-  //    Metro -- it must be told that `@/lib/money` means `money.ts`.
+  //    Metro -- it must be told that `@/lib/money` means `money.ts`. The
+  //    `@sellflow-sms` alias points at the local Expo module and gets the same
+  //    treatment, so a test imports the real bridge rather than a copy.
   if (pathname?.startsWith('@/')) {
     const base = resolvePath(root, 'src', pathname.slice(2));
+    for (const candidate of [`${base}.ts`, `${base}.tsx`, resolvePath(base, 'index.ts')]) {
+      if (existsSync(candidate)) {
+        return nextResolve(pathToFileURL(candidate).href + suffix, context);
+      }
+    }
+  }
+
+  if (pathname === '@sellflow-sms' || pathname.startsWith('@sellflow-sms/')) {
+    const relative = pathname === '@sellflow-sms' ? 'index' : pathname.slice('@sellflow-sms/'.length);
+    const base = resolvePath(root, 'modules', 'sellflow-sms', relative);
     for (const candidate of [`${base}.ts`, `${base}.tsx`, resolvePath(base, 'index.ts')]) {
       if (existsSync(candidate)) {
         return nextResolve(pathToFileURL(candidate).href + suffix, context);

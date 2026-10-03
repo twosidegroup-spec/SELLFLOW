@@ -1,14 +1,14 @@
-# Future native SMS adapter contract
+# Native SMS adapter contract
 
-Status: **specification only. Not implemented, not started, not permitted yet.**
+Status: **implemented (Phase 2).** This document is the contract it was written
+against, kept as the specification of record.
 
-This document defines what a future Android native adapter must produce and, just
-as importantly, what it must never do. It exists so that when the work is
-unblocked, the adapter has a contract to satisfy rather than a design to
-reinvent — and so that the boundary is reviewable *before* a single line of it
-exists.
+This document defines what the Android native adapter must produce and, just as
+importantly, what it must never do. It exists so that when the work is unblocked,
+the adapter has a contract to satisfy rather than a design to reinvent — and so
+the boundary is reviewable *before* a single line of it exists.
 
-Two gates must both be open before any adapter code is written:
+Two gates had to be open before any adapter code was written:
 
 1. **Policy.** `RECEIVE_SMS` is a restricted permission. SellFlow's eligibility
    rests on the *SMS-based financial transactions* exception, which is granted per
@@ -17,8 +17,12 @@ Two gates must both be open before any adapter code is written:
 2. **This contract.** The adapter must produce a normalised event and nothing
    more.
 
-If either gate is closed, the engine still works: `source = 'manual'` is
-implemented and tested today.
+Both are now open, and the implementation satisfies the rules below. Where Phase 2
+made a decision this document left open, it is recorded at the end under **What
+Phase 2 decided**.
+
+The engine works with or without the adapter: `source = 'manual'` is implemented
+and tested, and remains the answer when SMS permission is unavailable.
 
 ---
 
@@ -114,7 +118,7 @@ to "fix" them:
 ## Testing the adapter, when it exists
 
 The adapter's parsing is the one genuinely new piece of logic, and it is
-provider-specific string handling. It must be tested as such:
+provider-specific string handling. It is tested as such:
 
 - Table-driven tests over real message fixtures per provider, asserting the exact
   `ingest_payment_event` arguments.
@@ -124,8 +128,42 @@ provider-specific string handling. It must be tested as such:
 - No test may assert on matching or settlement behaviour — those are the engine's,
   already covered by `verify_payment_engine.sql` and `verify_payment_lifecycle.sql`.
 
-None of this exists yet. `scripts/payment-boundary.test.mjs` currently asserts
-its **absence**: no SMS permission in `app.json`, and no receiver, `pdus`,
-`SmsReceiver` or SMS-body handling anywhere in `src/`. If someone starts this
-work without unblocking the gates, that test fails — which is the intended
-behaviour.
+That is now in place:
+
+| Layer | Where | Covers |
+| --- | --- | --- |
+| Parsers | `modules/sellflow-sms/android/src/test/.../ProviderParserTest.kt` | The whole fixture corpus, plus the refusals that matter |
+| Corpus | `modules/sellflow-sms/android/src/test/resources/fixtures/payment-sms.json` | 36 representative cases, provenance labelled in-file |
+| Client half | `scripts/sms-adapter.test.mjs` | Normalisation, duplicates, offline, retry, permission, security |
+| Engine half | `supabase/test/verify_payment_sms_adapter.sql` | Native-shaped arguments through the engine to `record_payment` and finance |
+| Boundary | `scripts/payment-boundary.test.mjs` | What the adapter may not do |
+
+**The parser suite has not been executed.** It requires a JDK and an Android SDK,
+which the authoring environment does not have. Everything else in that table runs
+and passes today.
+
+The fixtures are **representative, not captured.** The provider notification texts
+are not publicly documented, so a green parser run does not mean any parser has
+seen a real payment. `modules/sellflow-sms/fixtures/README.md` explains the gap and
+how to close it; `docs/device-qa-checklist.md` §L is the gate.
+
+## What Phase 2 decided
+
+Three things this document left open, resolved during implementation:
+
+1. **`p_receiver_account` when the message names only the payer.** Most
+   notifications do. The rule above says "the literal number from the message";
+   Phase 2 resolved the absent case on the **device**, from the seller's own
+   connected account, rather than refusing the payment. Refusing would have
+   discarded most real payments. The server still compares the value against the
+   account it resolved from `p_payment_account_id`.
+2. **`p_detected_by` carries the parser version.** `payment_events` has no column
+   for it, and adding one to a money table for a single integer is not worth a
+   migration. It rides in the documented free-form field as
+   `android:<release>:sms:<appVersion>:p<n>`, so an event parsed today stays
+   diagnosable against the rules that produced it.
+3. **The parser is Kotlin, not TypeScript.** An inbound SMS starts the app process
+   but not the React Native runtime, so something must reduce the message to
+   structured fields before JavaScript exists. Doing that in Kotlin is what keeps
+   the "never store the raw body" prohibition absolute with no temporary-storage
+   exception. `docs/native-sms-architecture.md` has the reasoning.

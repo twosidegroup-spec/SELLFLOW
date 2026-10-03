@@ -296,6 +296,7 @@ Full end-to-end behaviour, against vanilla Postgres with the auth shim.
 | --- | --- |
 | `verify_payment_engine.sql` | The matching rules and their refusals, idempotency, tenant isolation |
 | `verify_payment_lifecycle.sql` | The whole lifecycle in one flow, the matrix gaps, financial invariants, finance/COD reconciliation, audit semantics |
+| `verify_payment_sms_adapter.sql` | The same engine driven with the native adapter's own argument shapes, plus forgery and replay |
 | `verify_payment_schema.sql` | 100 structural assertions: indexes, signatures, grants, policies, trust boundary |
 
 `verify_payment_lifecycle.sql` is the controlled end-to-end proof, and it drives
@@ -335,7 +336,7 @@ still reachable by `anon`.
 
 ### Client boundary
 
-`scripts/payment-boundary.test.mjs` (14 assertions, static) fails the build if:
+`scripts/payment-boundary.test.mjs` (24 assertions, static) fails the build if:
 
 - any payment table stops being `Insert: never` / `Update: never`
 - any source file writes a payment table directly
@@ -344,7 +345,23 @@ still reachable by `anon`.
 - `record_payment` is called from anywhere but `features/orders`
 - a payment screen bypasses the feature layer
 - the review queue loses a field needed to explain a refusal
-- an SMS permission or receiver appears in the app
+- an SMS permission appears in `app.json` or `eas.json`
+- the native SMS surface exists anywhere but the one config plugin
+- the module's own manifest declares a permission or a receiver
+- JavaScript touches the SMS transport, or any of the message plumbing
+- a raw message body is persisted, transmitted or logged anywhere
+- the native module handles a body outside the parsing pipeline
+- the adapter posts through anything but `ingest_payment_event` / `match_payment_event`
+- the client implements matching, scoring or settlement of its own
+- a privileged credential is reachable from app code
+- an idempotency key could be minted anywhere but the first-queue path
+- a provider lacks its own adapter, or an adapter declares no anchors of its own
+- the module is not registered and autolinkable
+
+The last eight were added in Phase 2. The Phase 1 rule "no SMS code may exist at
+all" was **removed, not relaxed** — it is replaced by rules about what SMS code may
+do, which is a stricter position: before, any SMS code failed the build; now,
+specific SMS code passes and specific violations fail.
 
 ## Registration
 
@@ -366,18 +383,44 @@ a config change, and out of scope here.
 
 ## What is deliberately not here
 
-- **No SMS permission, receiver or parser.** That is Phase 3, gated on the policy
-  work in `docs/google-play-sms-policy.md`. The schema, engine and UI are
-  complete without it, and `source = 'manual'` already works end to end. The
-  adapter's exact contract is written down in
-  `docs/sms-adapter-contract.md` so the boundary is reviewable before any of it
-  exists.
+- **No client-side decision of any kind.** The Android app detects, normalises and
+  posts. It has no order lookup, no amount comparison and no "is this paid". See
+  `docs/native-sms-architecture.md` and the boundary assertions in
+  `scripts/payment-boundary.test.mjs`.
 - **No subscription settlement.** `subscription` intents record and audit
-  correctly, but there is no subscription table yet, so nothing pretends to have
-  activated anything. The non-order branch of `settle_event_to_intent` is where
-  Phase 3 grows the real settlement.
-- **No raw message storage.** See the minimum-scope section of the Play policy
-  doc; this is a policy requirement as much as a design choice.
-- **No ingestion UI for 'sms'.** `ingest_payment_event` accepts a source and the
-  data layer exposes manual entry, but nothing in the app reads an SMS yet. The
-  native listener is the only missing producer.
+  correctly, and an SMS payment reaches one through the same engine — that is proved
+  in `verify_payment_sms_adapter.sql` §6 — but there is no subscription table yet,
+  so nothing pretends to have activated anything. The non-order branch of
+  `settle_event_to_intent` is where that grows.
+- **No raw message storage, anywhere.** Not in the native queue, not in
+  AsyncStorage, not in logs. The parser produces a normalised candidate and the body
+  is unreachable the moment it returns. See `docs/privacy-sms.md`, which is enforced
+  by enumeration in the boundary test rather than by policy.
+- **No verified-against-real-messages parser.** The four provider parsers run
+  against representative fixtures whose provenance is labelled in the corpus file,
+  because the provider notification texts are not publicly documented. They have not
+  been executed at all, because the authoring environment has no JDK. The
+  authoritative statement of what is and is not verified is the table at the bottom
+  of `docs/native-sms-architecture.md`; the gate is `docs/device-qa-checklist.md`.
+
+## Phase 2: the native SMS producer
+
+Added in Phase 2, and deliberately nothing more than a producer:
+
+| | |
+| --- | --- |
+| Native module | `modules/sellflow-sms` — Kotlin `BroadcastReceiver`, four provider adapters, a candidate queue, a JS bridge |
+| Manifest | `plugins/withSellflowSms.js` — `RECEIVE_SMS` and one receiver, nothing else |
+| Client layer | `src/features/payments/sms/` — account resolution, durable queue, ingest and match, status |
+| Screen | `/(app)/payment-sms` — status, permission explanation, queue, privacy summary |
+| Tests | `scripts/sms-adapter.test.mjs`, `supabase/test/verify_payment_sms_adapter.sql`, `ProviderParserTest.kt` |
+
+`ingest_payment_event` and `match_payment_event` are unchanged, `record_payment` is
+unchanged, and no migration was needed: `payment_events` already had `fingerprint`,
+`client_ref` and `detected_by`.
+
+Two tables hold the boundary and both got stronger in Phase 2. The old rule was "no
+SMS code may exist"; the new rules are about what SMS code may do — one permission,
+no inbox access, no raw text retained, no client-side matching, and ingestion
+through exactly one function. See `docs/sms-adapter-contract.md` for what changed
+and why it is stricter.

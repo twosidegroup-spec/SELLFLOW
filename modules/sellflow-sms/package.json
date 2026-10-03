@@ -1,0 +1,7 @@
+{
+  "name": "sellflow-sms",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native Android SMS listener for SellFlow payment detection. Parses provider notifications on-device and persists only normalised candidates.",
+  "main": "index.ts"
+}

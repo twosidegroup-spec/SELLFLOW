@@ -1,0 +1,38 @@
+// Matches the shape `create-expo-module --local` generates for SDK 57: apply the
+// Android library plugin, then the Expo module plugin, and let the Expo plugin
+// apply Kotlin, the SDK versions and the expo-modules-core dependency itself.
+// Declaring those here as well is how a local module ends up fighting the plugin
+// over plugin versions.
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'com.sellflow.sms'
+version = '1.0.0'
+
+android {
+  namespace 'com.sellflow.sms'
+
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+
+  testOptions {
+    unitTests {
+      includeAndroidResources = true
+    }
+  }
+}
+
+dependencies {
+  // Provider parsing is pure Kotlin over strings, so the JUnit suite runs on the
+  // JVM: no device, no emulator and no Android runtime. That is the whole reason
+  // the parsing layer lives in its own package with no Android imports.
+  //
+  //   cd android && ./gradlew :sellflow-sms:testDebugUnitTest
+  testImplementation 'junit:junit:4.13.2'
+
+  // The Android SDK's org.json is a stub in local unit tests and throws
+  // "not mocked". The real implementation is what the fixture loader needs.
+  testImplementation 'org.json:json:20240303'
+}

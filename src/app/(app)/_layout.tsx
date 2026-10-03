@@ -16,6 +16,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
 
 import { ErrorState, LoadingState } from '@/components/ui';
+import { useSmsListener } from '@/features/payments/sms/hooks';
 import { useLock } from '@/store/lock';
 import { useSession } from '@/store/session';
 
@@ -23,8 +24,19 @@ export default function AppLayout() {
   const status = useSession((state) => state.status);
   const storeId = useSession((state) => state.store?.id);
   const userId = useSession((state) => state.user?.id);
+  const organizationId = useSession((state) => state.organization?.id);
   const refreshWorkspace = useSession((state) => state.refreshWorkspace);
   const workspaceError = useSession((state) => state.workspaceError);
+
+  /*
+   * The native payment listener lives here, not on the detection screen.
+   *
+   * Detection has to work while the seller is looking at an order, not only while
+   * they happen to be looking at Payments, so it is mounted for the whole
+   * authenticated session. It is stopped the moment the session is not `ready`,
+   * so a signed-out device never holds a queue of events it cannot send.
+   */
+  useSmsListener(organizationId, status === 'ready');
 
   const hasPasscode = useLock((state) => state.hasPasscode);
   const isLocked = useLock((state) => state.isLocked);
@@ -118,6 +130,7 @@ export default function AppLayout() {
           the two forms slide from the bottom like every other form here. */}
       <Stack.Screen name="payments" />
       <Stack.Screen name="payment-review" />
+      <Stack.Screen name="payment-sms" />
       <Stack.Screen name="payment-account/new" options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="payment-intent/new" options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="notifications" options={{ animation: 'slide_from_bottom' }} />

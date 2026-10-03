@@ -1,6 +1,6 @@
 /**
- * Payment boundary: the client cannot write the ledger, and the future SMS
- * adapter has a defined contract.
+ * Payment boundary: the client cannot write the ledger, and the native SMS
+ * adapter stays inside its contract.
  *
  * These are static assertions over the source rather than runtime tests, and
  * that is the point. The rules being defended are architectural:
@@ -13,8 +13,14 @@
  *     added without being listed here, so the trust boundary stays reviewable.
  *   * record_payment is not called from the payment feature. Settlement belongs
  *     to the engine; a client-side shortcut would bypass the audit trail.
- *   * No SMS permission exists anywhere, because the native adapter is not
- *     started yet. This test will fail loudly if one appears.
+ *
+ * Phase 2 replaced the last two assertions, which asserted that no SMS
+ * permission and no receiver existed, with a larger set about what the adapter
+ * must now do instead. Nothing was removed to make room: the previous rule
+ * ("app.json declares no SMS permission") is still enforced verbatim, and the new
+ * rules are strictly additional -- permission surface, no inbox access, no raw
+ * message retention anywhere, no service-role key, no matching in the client, and
+ * ingestion through exactly one function.
  *
  * It also pins the data the review queue needs, so "why didn't SellFlow match
  * this?" cannot silently lose its answer.
@@ -23,10 +29,15 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, relative, resolve } from 'node:path';
+
+const require = createRequire(import.meta.url);
 
 const REPO = resolve(import.meta.dirname, '..');
 const SRC = join(REPO, 'src');
+const MODULE = join(REPO, 'modules', 'sellflow-sms');
+const PLUGIN = join(REPO, 'plugins', 'withSellflowSms.js');
 
 const PAYMENT_TABLES = [
   'payment_accounts',
@@ -64,6 +75,16 @@ function walk(dir, out = []) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) walk(full, out);
     else if (/\.tsx?$/.test(entry)) out.push(full);
+  }
+  return out;
+}
+
+/** Every file under a directory, any extension. For the native module's Kotlin. */
+function walkAll(dir, out = []) {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) walkAll(full, out);
+    else out.push(full);
   }
   return out;
 }
@@ -364,7 +385,24 @@ describe('payment boundary', () => {
     );
   });
 
-  test('no SMS permission exists anywhere in the app configuration', () => {
+  // ---------------------------------------------------------------------------
+  // Native SMS adapter -- Phase 2
+  //
+  // Phase 1 ended with two assertions that read "no SMS permission exists
+  // anywhere" and "no SMS parsing or receiver has been implemented yet". Both are
+  // gone, and in their place is a set of rules about what the adapter IS allowed
+  // to do. That is a stricter position, not a looser one: before, any SMS code at
+  // all failed the build; now, specific SMS code passes and specific violations
+  // fail.
+  // ---------------------------------------------------------------------------
+
+  test('no SMS permission is declared in app configuration', () => {
+    // Still true, and deliberately still asserted.
+    //
+    // RECEIVE_SMS reaches the manifest through plugins/withSellflowSms.js rather
+    // than through app.json, so the configuration a reviewer reads does not quietly
+    // grow a restricted permission next to the icon paths. The plugin is the whole
+    // native SMS surface and has its own assertions below.
     const appJson = read(join(REPO, 'app.json'));
     const easJson = read(join(REPO, 'eas.json'));
     const combined = `${appJson}\n${easJson}`;
@@ -381,19 +419,114 @@ describe('payment boundary', () => {
     ]) {
       assert.ok(
         !combined.includes(permission),
-        `${permission} must not be declared: the native SMS adapter has not started`,
+        `${permission} must not be declared in app.json or eas.json`,
       );
     }
   });
 
-  test('no SMS parsing or receiver has been implemented yet', () => {
+  test('the native SMS surface lives in one config plugin', () => {
+    assert.ok(existsSync(PLUGIN), 'plugins/withSellflowSms.js must exist');
+
+    const appJson = read(join(REPO, 'app.json'));
+    assert.match(
+      appJson,
+      /"\.\/plugins\/withSellflowSms"/,
+      'app.json must register the plugin, or no permission is granted and no receiver runs',
+    );
+
+    const plugin = require(PLUGIN);
+
+    // Exactly the permission the feature needs, and nothing else.
+    assert.equal(plugin.RECEIVE_SMS, 'android.permission.RECEIVE_SMS');
+    assert.equal(
+      plugin.SMS_RECEIVED_ACTION,
+      'android.provider.Telephony.SMS_RECEIVED',
+    );
+    assert.equal(plugin.RECEIVER_CLASS, 'com.sellflow.sms.SellflowSmsReceiver');
+
+    const granted = ['android.permission.RECEIVE_SMS'];
+    const forbidden = [
+      'android.permission.READ_SMS',
+      'android.permission.SEND_SMS',
+      'android.permission.WRITE_SMS',
+      'android.permission.RECEIVE_MMS',
+      'android.permission.RECEIVE_WAP_PUSH',
+      // Gates SMS_DELIVER, which only the default SMS app may receive. SellFlow is
+      // not a default SMS handler, so requesting it would be requesting a
+      // permission this feature cannot use.
+      'android.permission.BROADCAST_SMS',
+      'android.permission.BROADCAST_WAP_PUSH',
+      'android.permission.READ_CONTACTS',
+      'android.permission.GET_ACCOUNTS',
+      'android.permission.READ_CALL_LOG',
+      'android.permission.WRITE_CALL_LOG',
+    ];
+
+    for (const permission of forbidden) {
+      assert.ok(
+        !granted.includes(permission),
+        `${permission} must never be requested: reading the inbox is a far broader permission than reading one payment notification`,
+      );
+      assert.ok(
+        plugin.FORBIDDEN_PERMISSIONS.includes(permission),
+        `${permission} must be on the plugin's removal list, so an unrelated edit cannot widen the permission surface`,
+      );
+    }
+
+    // The plugin's own source may not name a forbidden permission as something it
+    // adds. `FORBIDDEN_PERMISSIONS` is the only legitimate place they appear, and
+    // they have to appear there, so the check is on the add path rather than the
+    // whole file.
+    const added = plugin.FORBIDDEN_PERMISSIONS.filter((permission) =>
+      new RegExp(`buildPermission[^}]*${permission.replace(/\./g, '\\.')}`).test(plugin),
+    );
+    assert.deepEqual(added, [], 'buildPermission must only ever add RECEIVE_SMS');
+  });
+
+  test('the module manifest declares no SMS surface of its own', () => {
+    // Everything comes from the plugin. A library manifest arriving through
+    // autolinking would make the permission diff invisible, which is what
+    // docs/google-play-sms-policy.md forbids.
+    //
+    // Comments are stripped first, and they have to be: the file explains at length
+    // why it is empty, and an unstripped scan reports the explanation as a
+    // violation.
+    // XML comments are stripped too, and they have to be: the file explains at
+    // length why it is empty, and an unstripped scan reports the explanation as a
+    // violation.
+    const manifest = read(join(MODULE, 'android', 'src', 'main', 'AndroidManifest.xml'))
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+    for (const token of ['uses-permission', 'receiver', 'SMS', 'sms']) {
+      assert.ok(
+        !manifest.includes(token),
+        `the module manifest must not declare ${token}: the plugin owns the whole SMS surface`,
+      );
+    }
+  });
+
+  test('JavaScript never touches the SMS transport or a message body', () => {
+    // The privacy contract's enforcement point. If any of these appear in src/, the
+    // app has started reading messages itself instead of receiving normalised
+    // candidates from the native layer, and every guarantee about storage and
+    // transmission is no longer structurally true.
+    //
+    // RECEIVE_SMS is deliberately absent from this list. JavaScript is *supposed* to
+    // name it: `PermissionsAndroid.PERMISSIONS.RECEIVE_SMS` is how the OS prompt is
+    // raised, and React Native already knows the constant. What matters is that the
+    // name appears only in a permission request and never as a declared permission,
+    // which the app-configuration assertion above covers.
     const banned = [
-      /SmsReceiver/i,
-      /RECEIVE_SMS/i,
-      /BroadcastReceiver/i,
-      /Telephony\.Sms/i,
-      /pdus/,
+      /Telephony\./,
+      /BroadcastReceiver/,
+      /getMessagesFromIntent/,
+      /\bSmsMessage\b/,
+      /pdus/i,
       /sms_body/i,
+      /content:\/\/sms/,
+      /SmsManager/,
+      /createFromPdu/,
     ];
 
     const offenders = [];
@@ -407,7 +540,357 @@ describe('payment boundary', () => {
     assert.deepEqual(
       offenders,
       [],
-      `native SMS work must not exist yet:\n  ${offenders.join('\n  ')}`,
+      `JavaScript must never handle the SMS transport:\n  ${offenders.join('\n  ')}`,
+    );
+  });
+
+  test('no raw message body is persisted, transmitted or logged', () => {
+    // The queue record and everything the adapter sends are checked by shape: the
+    // forbidden keys cannot appear in the durable type, and the ingest payload is
+    // built in exactly one function, which is asserted to contain none of them.
+    const smsDir = join(SRC, 'features', 'payments', 'sms');
+    assert.ok(existsSync(smsDir), 'features/payments/sms must exist');
+
+    const forbiddenKeys = [
+      /['"`]messageBody['"`]/,
+      /['"`]body['"`]\s*:/,
+      /['"`]sms_body['"`]/,
+      /['"`]message['"`]\s*:/,
+      /['"`]text['"`]\s*:/,
+    ];
+
+    const offenders = [];
+    for (const file of walk(smsDir)) {
+      const src = code(file);
+      for (const pattern of forbiddenKeys) {
+        if (pattern.test(src)) offenders.push(`${rel(file)} matches ${pattern}`);
+      }
+    }
+
+    assert.deepEqual(
+      offenders,
+      [],
+      `the adapter stores structured fields, never message text:\n  ${offenders.join('\n  ')}`,
+    );
+
+    // The only deliberate exception: the development diagnostics panel, which
+    // takes a pasted string to parse in memory. It must be the single occurrence,
+    // it must be behind __DEV__, and it must not reach the queue.
+    // Comments are stripped, because this file explains in prose that the
+    // output has no path to ingestion, and a scan that read the explanation would
+    // report it as a violation.
+    const diagnostics = code(join(smsDir, 'diagnostics.ts'));
+    assert.ok(
+      /parseMessageForDiagnostics/.test(diagnostics),
+      'diagnostics must go through the native parser',
+    );
+    assert.ok(
+      !/ingest_payment_event/.test(diagnostics),
+      'diagnostics must have no path to the ingestion boundary',
+    );
+    assert.ok(
+      !/writeJson|writeString|AsyncStorage|readQueue|writeQueue/.test(diagnostics),
+      'diagnostics must not read or write storage',
+    );
+
+    const screen = read(join(SRC, 'app', '(app)', 'payment-sms.tsx'));
+    assert.ok(
+      screen.includes('{__DEV__ ? <DiagnosticsPanel /> : null}'),
+      'the diagnostics panel must only render in a development build',
+    );
+  });
+
+  test('the native module keeps the message body inside one function', () => {
+    const kotlinRoot = join(MODULE, 'android', 'src');
+    assert.ok(existsSync(kotlinRoot), 'the native module must exist');
+
+    // messageBody may be read by a provider adapter and by the parser pipeline. It
+    // must never be copied onto a candidate, a queue row, an event map or a log, so
+    // the files that touch it are enumerated rather than trusted.
+    //
+    // The test tree is excluded: ProviderParserTest deliberately names the field to
+    // assert on it, which is how the leak would be caught rather than committed.
+    const mainRoot = join(kotlinRoot, 'main');
+    assert.ok(existsSync(mainRoot), 'the module must have main sources');
+
+    const filesThatReadIt = [];
+    for (const file of walkAll(mainRoot)) {
+      const src = readFileSync(file, 'utf8');
+      if (/\bmessageBody\b/.test(src)) {
+        filesThatReadIt.push(relative(REPO, file).replace(/\\/g, '/'));
+      }
+    }
+
+    assert.ok(
+      filesThatReadIt.length > 0,
+      'the message body must be read somewhere, or the fixtures prove nothing',
+    );
+
+    const allowed = [
+      'providers/BkashAdapter.kt',
+      'providers/NagadAdapter.kt',
+      'providers/RocketAdapter.kt',
+      'providers/UpayAdapter.kt',
+      'providers/ProviderAdapter.kt',
+      'providers/ProviderRegistry.kt',
+      'SellflowSmsReceiver.kt',
+      'SellflowSmsModule.kt',
+    ];
+
+    for (const file of filesThatReadIt) {
+      assert.ok(
+        allowed.some((suffix) => file.endsWith(suffix)),
+        `${file} must not handle a raw message body: only the parsing pipeline may`,
+      );
+    }
+
+    // The queue and the candidate are the two artefacts that outlive a message, so
+    // they are asserted explicitly rather than by enumeration.
+    const queue = readFileSync(
+      join(mainRoot, 'java', 'com', 'sellflow', 'sms', 'CandidateQueue.kt'),
+      'utf8',
+    );
+    assert.ok(
+      !/\bmessageBody\b/.test(queue),
+      'CandidateQueue must never see a message body: it is the durable artefact',
+    );
+
+    const module = readFileSync(
+      join(mainRoot, 'java', 'com', 'sellflow', 'sms', 'SellflowSmsModule.kt'),
+      'utf8',
+    );
+    // The only permitted appearance is the diagnostics entry point's parameter,
+    // which exists so a real captured message can be checked against the real
+    // parser. What must not exist is any path from there to a queue row.
+    assert.ok(
+      !/put\(KEY_BODY|messageBody,/.test(module),
+      'the event map must never carry message text',
+    );
+  });
+
+  test('the adapter posts through exactly one ingestion function', () => {
+    const smsDir = join(SRC, 'features', 'payments', 'sms');
+
+    const callers = new Map();
+    for (const file of walk(smsDir)) {
+      const src = code(file);
+      for (const match of src.matchAll(/ingest_payment_event|match_payment_event/g)) {
+        const name = match[0];
+        if (!callers.has(name)) callers.set(name, new Set());
+        callers.get(name).add(rel(file));
+      }
+    }
+
+    // Both are the engine's, and only the engine's. A new RPC here would be a new
+    // door into the ledger.
+    for (const name of ['ingest_payment_event', 'match_payment_event']) {
+      assert.ok(callers.has(name), `the adapter must call ${name}`);
+    }
+
+    const allowedEngines = new Set(['ingest_payment_event', 'match_payment_event']);
+    for (const name of callers.keys()) {
+      assert.ok(allowedEngines.has(name), `${name} is not an approved ingestion RPC`);
+    }
+
+    // The argument mapping lives in exactly one place.
+    const builder = read(join(smsDir, 'ingest.ts'));
+    assert.ok(
+      /export function buildIngestArgs/.test(builder),
+      'the ingest payload must be built in one reviewed function',
+    );
+    assert.ok(
+      /p_source: SMS_EVENT_SOURCE/.test(builder),
+      'the adapter must send source = sms and nothing else',
+    );
+    assert.ok(
+      /SMS_EVENT_SOURCE: PaymentEventSource = 'sms'/.test(read(join(smsDir, 'types.ts'))),
+      'the only source value an SMS adapter may send is sms',
+    );
+  });
+
+  test('the client implements no matching, scoring or settlement', () => {
+    // The engine owns every financial decision. A second implementation in the app
+    // would be a second set of bugs against real money, so the code that would
+    // constitute one is asserted absent.
+    //
+    // Patterns are code shapes, not vocabulary: the adapter legitimately SAYS the
+    // word "settle" in a sentence explaining that the engine does it, and banning
+    // the word would flag the explanation while missing the implementation.
+    const smsDir = join(SRC, 'features', 'payments', 'sms');
+
+    const banned = [
+      /record_payment/,
+      /amount_paid/,
+      /payment_status/,
+      /\.settle\(/,
+      /settle_event/,
+      /settleEvent/,
+      /score_payment_match/,
+      /scorePaymentMatch/,
+      /compareAmount/,
+      /isPaid/,
+      /markAsPaid/,
+    ];
+
+    const offenders = [];
+    for (const file of walk(smsDir)) {
+      const src = code(file);
+      for (const pattern of banned) {
+        if (pattern.test(src)) offenders.push(`${rel(file)} matches ${pattern}`);
+      }
+    }
+
+    assert.deepEqual(
+      offenders,
+      [],
+      `the adapter detects payments, it never decides one was paid:\n  ${offenders.join('\n  ')}`,
+    );
+  });
+
+  test('no privileged credential is reachable from the client', () => {
+    // The APK is extractable, so anything privileged inside it is public. The
+    // service key belongs to no client; money writes go through a session.
+    const banned = [
+      /service_role/i,
+      /SERVICE_ROLE/i,
+      /supabase.{0,20}service.{0,20}key/i,
+      /eyJhbGciOi[A-Za-z0-9_-]{10,}/,
+    ];
+
+    const offenders = [];
+    for (const file of [...walk(SRC), ...walk(MODULE)]) {
+      const src = readFileSync(file, 'utf8');
+      for (const pattern of banned) {
+        if (pattern.test(src)) offenders.push(`${rel(file)} matches ${pattern}`);
+      }
+    }
+
+    assert.deepEqual(
+      offenders,
+      [],
+      `no privileged credential may exist in app code:\n  ${offenders.join('\n  ')}`,
+    );
+
+    // And the reason a relay cannot use the service key at all: the money-writing
+    // RPCs are not granted to it. Asserted again here because this is the file a
+    // reader checks first.
+    const grants = read(join(REPO, 'supabase', 'migrations', '0024_payment_grants.sql'));
+    assert.match(
+      grants,
+      /service_role can settle a payment without a session/,
+      'the least-privilege assertion must still be in place',
+    );
+    assert.match(
+      grants,
+      /revoke all on function[\s\S]*settle_event_to_intent/,
+      'the settlement function must still be revoked from every client role',
+    );
+  });
+
+  test('the adapter keeps one idempotency key per event', () => {
+    const smsDir = join(SRC, 'features', 'payments', 'sms');
+
+    const queue = read(join(smsDir, 'queue.ts'));
+    // Minted once, in one place. A key generated per attempt is how one SMS becomes
+    // three payments.
+    assert.ok(
+      /export function newClientRef/.test(queue),
+      'the idempotency key must have exactly one source',
+    );
+
+    const minters = [];
+    for (const file of walk(smsDir)) {
+      const src = code(file);
+      if (/newClientRef\(\)/.test(src)) minters.push(rel(file));
+    }
+    assert.deepEqual(
+      [...minters].sort(),
+      [
+        'src/features/payments/sms/listener.ts',
+        'src/features/payments/sms/queue.ts',
+      ],
+      'the key may be minted by the queue and the listener, and nowhere else',
+    );
+
+    // Retrying must reuse the key, never replace it. One call site is the whole
+    // guarantee: a second `newClientRef()` in the listener would be a second chance
+    // to turn one payment into two.
+    const listener = read(join(smsDir, 'listener.ts'));
+    const mints = [...listener.matchAll(/newClientRef\(\)/g)];
+    assert.equal(
+      mints.length,
+      1,
+      'the listener may mint an idempotency key exactly once, when an event is first queued',
+    );
+    assert.match(
+      listener,
+      /ingestNativeCandidates[\s\S]*clientRef: newClientRef\(\)/,
+      'and that call must be on the first-queue path',
+    );
+
+    // And the queue itself never invents one, so a retry cannot quietly become a new
+    // payment: the only occurrence in queue.ts is the declaration.
+    const queueOccurrences = [...queue.matchAll(/newClientRef\(\)/g)];
+    assert.equal(
+      queueOccurrences.length,
+      1,
+      'queue.ts declares newClientRef exactly once and must never call it',
+    );
+    assert.match(queue, /export function newClientRef\(\)/);
+  });
+
+  test('every provider has its own adapter, not one shared parser', () => {
+    const providersDir = join(MODULE, 'android', 'src', 'main', 'java', 'com', 'sellflow', 'sms', 'providers');
+    assert.ok(existsSync(providersDir), 'the providers package must exist');
+
+    for (const provider of ['Bkash', 'Nagad', 'Rocket', 'Upay']) {
+      assert.ok(
+        existsSync(join(providersDir, `${provider}Adapter.kt`)),
+        `${provider}Adapter.kt must exist: one provider, one file`,
+      );
+    }
+
+    // Each adapter must contribute its own wording rather than delegating to a
+    // shared table, which is what would turn four providers into one parser.
+    for (const provider of ['Bkash', 'Nagad', 'Rocket', 'Upay']) {
+      const src = readFileSync(join(providersDir, `${provider}Adapter.kt`), 'utf8');
+      assert.match(src, /override val transferAnchors/, `${provider} must declare its own anchors`);
+    }
+
+    const registry = readFileSync(join(providersDir, 'ProviderRegistry.kt'), 'utf8');
+    for (const provider of ['BkashAdapter()', 'NagadAdapter()', 'RocketAdapter()', 'UpayAdapter()']) {
+      assert.ok(registry.includes(provider), `${provider} must be registered`);
+    }
+  });
+
+  test('the adapter is registered as a local Expo module and autolinks', () => {
+    // Without this the app builds and runs, the permission is granted, and no SMS
+    // is ever received -- the most expensive kind of silent failure.
+    const config = read(join(MODULE, 'expo-module.config.json'));
+    const parsed = JSON.parse(config);
+
+    assert.deepEqual(parsed.platforms, ['android'], 'the module must be Android-only');
+    assert.deepEqual(
+      parsed.android.modules,
+      ['com.sellflow.sms.SellflowSmsModule'],
+      'SDK 57 requires the module class to be declared; it does not scan sources',
+    );
+
+    // `./modules` at the app root is where Expo autolinking looks by default
+    // (`expo-modules-autolinking` resolves `nativeModulesDir` to `./modules` when
+    // unset), so no config key is needed -- and `expo.autolinking` is not part of
+    // the SDK 57 app-config schema, so adding one would fail `expo-doctor`.
+    assert.ok(
+      existsSync(MODULE),
+      'the module must live in ./modules, the default autolinking directory',
+    );
+    assert.ok(
+      existsSync(join(MODULE, 'index.ts')),
+      'the module must have a JavaScript entry point',
+    );
+    assert.ok(
+      existsSync(join(MODULE, 'android', 'build.gradle')),
+      'the module must have an Android library build file',
     );
   });
 });

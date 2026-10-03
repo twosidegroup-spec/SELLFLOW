@@ -1,0 +1,493 @@
+{
+  "provenance": {
+    "status": "REPRESENTATIVE / UNVERIFIED",
+    "what": "The bKash, Nagad, Rocket and Upay notification texts are NOT publicly documented. These fixtures encode the widely-reported STRUCTURE of a money-in notification -- a receive verb, a currency amount, the paying number, a resulting balance and a labelled transaction reference -- not any provider's exact current wording.",
+    "why": "A parser cannot be written against a format nobody published, and shipping these as if they were captured would be a false claim. So they are labelled, and closing the gap is an explicit device-QA step.",
+    "how_to_close_the_gap": "Send a real payment to a connected account, then in the app open Payments -> Automatic detection -> Parser check (development only) and paste the real message. If the parser refuses it or extracts the wrong field, that is the signal to extend the adapter and add the real message to this file with a captured: true flag.",
+    "not_covered_here": "Duplicate transactions, replay, matching and settlement are not parser concerns. They are covered by scripts/sms-adapter.test.mjs and supabase/test/verify_payment_sms_adapter.sql.",
+    "reviewed": "2026-10-03"
+  },
+  "cases": [
+    {
+      "id": "bkash-received-standard",
+      "captured": false,
+      "sender": "bKash",
+      "body": "You have received Tk 1,000.00 from 01812345678 on 12 Jan 2024 10:32 am. Your bKash balance Tk 15,000.00. TrxID: 8GHK9XYZ12A",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "bkash",
+        "amount": 1000,
+        "transactionId": "8GHK9XYZ12A",
+        "senderAccount": "01812345678",
+        "receiverAccount": null,
+        "transactionTimestamp": "2024-01-12T04:32:00.000Z"
+      },
+      "note": "The canonical shape. Balance and transfer in one message: the whole reason the transfer is found by anchor rather than by taking the first number."
+    },
+    {
+      "id": "bkash-received-compact",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You have received Tk 500 from 01712345678. TrxID: BKCASH1234",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "bkash",
+        "amount": 500,
+        "transactionId": "BKCASH1234",
+        "senderAccount": "01712345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "No balance, no timestamp. A null transaction_timestamp is correct and is left to the server rather than invented."
+    },
+    {
+      "id": "bkash-received-no-space-currency",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You received Tk1200 from 01612345678. Reference No TRX778899AA",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "bkash",
+        "amount": 1200,
+        "transactionId": "TRX778899AA",
+        "senderAccount": "01612345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "No space after the currency token and a 'Reference No' label instead of 'TrxID'. Both spellings are in the wild; '\\bTk\\b' would have missed the first."
+    },
+    {
+      "id": "bkash-received-bdt-wording",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You have received BDT 2,500.00 from 01912345678. Your BDT balance is 9,000.00. TrxID: BDTWORD001",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "bkash",
+        "amount": 2500,
+        "transactionId": "BDTWORD001",
+        "senderAccount": "01912345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "Currency written as BDT rather than Tk."
+    },
+    {
+      "id": "bkash-received-no-sender",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You have received Tk 750 from a customer. TrxID: NOSENDER001",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "bkash",
+        "amount": 750,
+        "transactionId": "NOSENDER001",
+        "senderAccount": null,
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "A walk-in customer with no number anywhere. Must still parse: the engine downgrades this to `medium` and waits for a human, which is correct. Refusing it would lose a real payment."
+    },
+    {
+      "id": "bkash-received-receiver-stated",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You have received Tk 640 from 01899998888. To account 01712345678. TrxID: RECV00001",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "bkash",
+        "amount": 640,
+        "transactionId": "RECV00001",
+        "senderAccount": "01899998888",
+        "receiverAccount": "01712345678",
+        "transactionTimestamp": null
+      },
+      "note": "Some messages do state the receiving number. When they do, it is the number the server compares against the connected account, so it must be extracted rather than defaulted."
+    },
+    {
+      "id": "bkash-received-unexpected-order",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash TrxID: ORDER001. Received Tk 250 from 01612345678 at 25 Dec 2024 09:05 pm.",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "bkash",
+        "amount": 250,
+        "transactionId": "ORDER001",
+        "senderAccount": "01612345678",
+        "receiverAccount": null,
+        "transactionTimestamp": "2024-12-25T15:05:00.000Z"
+      },
+      "note": "Reference first, amount last. Proves nothing depends on field order or on a character offset."
+    },
+    {
+      "id": "bkash-balance-only",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You have received a payment. Your bKash balance is Tk 15,000.00. TrxID: BALONLY01",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "malformed_amount"
+      },
+      "note": "The single most dangerous case there is: a message with a receive verb and a currency number, where the number is the BALANCE. Accepting it would credit a payment of 15,000 taka. Must never be read as the transfer."
+    },
+    {
+      "id": "bkash-ambiguous-two-transfers",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You received Tk 500 from 01812345678. Cash In Tk 700. TrxID: AMBIG0001",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "ambiguous_fields"
+      },
+      "note": "Two anchors, two different amounts, no way to tell which was received. Refused rather than resolved by taking the first."
+    },
+    {
+      "id": "bkash-missing-amount",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You have received money from 01812345678. TrxID: MISSAMT01",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "missing_amount"
+      },
+      "note": "Provider named, transfer stated, no figure. Nothing may be inferred."
+    },
+    {
+      "id": "bkash-malformed-amount",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You have received Tk from 01812345678. TrxID: MALAMT001",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "malformed_amount"
+      },
+      "note": "A currency token with no number after it. Distinguished from 'missing' so a developer can tell a wording change from a broken message."
+    },
+    {
+      "id": "bkash-missing-transaction-id",
+      "captured": false,
+      "sender": "bKash",
+      "body": "You have received Tk 500 from 01712345678. Thank you for using bKash.",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "missing_transaction_id"
+      },
+      "note": "No reference anywhere. Never invent one: re-reading this SMS must not be able to look like a second payment."
+    },
+    {
+      "id": "bkash-malformed-transaction-id",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You have received Tk 500 from 01712345678. TrxID: ##",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "malformed_transaction_id"
+      },
+      "note": "A reference label with an unusable value."
+    },
+    {
+      "id": "bkash-transaction-id-is-a-phone-number",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You have received Tk 500 from 01712345678. TrxID: 01812345678",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "malformed_transaction_id"
+      },
+      "note": "A phone number in the reference field. Accepting it would make one SMS idempotent against a number, not a transaction."
+    },
+    {
+      "id": "bkash-sent-not-received",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: You have sent Tk 500 to 01712345678. Your bKash balance Tk 4,500.00. TrxID: SENT00001",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "not_a_payment_message"
+      },
+      "note": "The PAYER's confirmation that money left. The seller's handset receives receipts, but this must never be treated as money arriving -- it would credit a payment the seller did not receive."
+    },
+    {
+      "id": "otp-bkash",
+      "captured": false,
+      "sender": "bKash",
+      "body": "Your bKash OTP is 482913. Do not share it with anyone.",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "otp_or_security_message"
+      },
+      "note": "The single most damaging thing this module could get wrong. Turn someone's two-factor code into a ledger row and the product is unusable for a bank-grade customer."
+    },
+    {
+      "id": "otp-bare-digits",
+      "captured": false,
+      "sender": "bKash",
+      "body": "482913",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "otp_or_security_message"
+      },
+      "note": "A body that is only digits of passcode length."
+    },
+    {
+      "id": "otp-code-labelled",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash code: 774120 valid for 5 minutes",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "otp_or_security_message"
+      },
+      "note": "Worded as 'code' rather than 'OTP', so the numeric-only rule does not catch it."
+    },
+    {
+      "id": "nagad-received-standard",
+      "captured": false,
+      "sender": "Nagad",
+      "body": "You have received Tk 500.00 from 01712345678. Your Nagad balance Tk 3,200.00. TrxID: NG7A2B3C4D5",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "nagad",
+        "amount": 500,
+        "transactionId": "NG7A2B3C4D5",
+        "senderAccount": "01712345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "Canonical Nagad shape."
+    },
+    {
+      "id": "nagad-received-compact",
+      "captured": false,
+      "sender": "Nagad",
+      "body": "Nagad: You received Tk 85 from 01812345678. TrxID: NG85001234",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "nagad",
+        "amount": 85,
+        "transactionId": "NG85001234",
+        "senderAccount": "01812345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "Two-decimal-free small amount, and a reference whose digits must not be read as extra amounts."
+    },
+    {
+      "id": "nagad-missing-transaction-id",
+      "captured": false,
+      "sender": "Nagad",
+      "body": "Nagad: You have received Tk 500.00 from 01712345678.",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "missing_transaction_id"
+      },
+      "note": "Provider named, amount readable, no reference at all."
+    },
+    {
+      "id": "nagad-otp",
+      "captured": false,
+      "sender": "Nagad",
+      "body": "Your Nagad verification code is 918273. Do not share.",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "otp_or_security_message"
+      },
+      "note": "Nagad's passcode wording differs from bKash's; the refusal must not depend on one provider's phrasing."
+    },
+    {
+      "id": "payment-without-a-brand-word",
+      "captured": false,
+      "sender": "shortcode",
+      "body": "You have received Tk 500.00 from 01712345678. Your balance Tk 4,500.00. TrxID: NOBRAND001",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "unsupported_provider"
+      },
+      "note": "KNOWN DETECTION LIMITATION, pinned by this test so it cannot regress silently. Detection identifies the provider from the provider's own name in the message. If an operator's notification omits it, the payment is NOT detected rather than being attributed to the wrong provider. The stable alternative signal is the sending shortcode; adding a learned sender-to-provider map is the documented follow-up if device QA shows real messages omitting the brand. See docs/device-setup.md."
+    },
+    {
+      "id": "nagad-received-decimal",
+      "captured": false,
+      "sender": "Nagad",
+      "body": "You have received Tk 1,049.50 from 01512345678. Your Nagad balance Tk 12,049.50. TrxID: NGDECIMAL1",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "nagad",
+        "amount": 1049.5,
+        "transactionId": "NGDECIMAL1",
+        "senderAccount": "01512345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "Two-decimal amount. Must reach the server as a number in major units, not as 104950 poisha."
+    },
+    {
+      "id": "nagad-received-no-sender",
+      "captured": false,
+      "sender": "Nagad",
+      "body": "Nagad: You have received Tk 320. TrxID: NGNOSND01",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "nagad",
+        "amount": 320,
+        "transactionId": "NGNOSND01",
+        "senderAccount": null,
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "Walk-in payment with no payer number. Must parse."
+    },
+    {
+      "id": "nagad-suspicious-long",
+      "captured": false,
+      "sender": "Nagad",
+      "body": "Nagad promotional broadcast with a very long body that repeats itself many times and would otherwise contain something that looks like a payment notification with an amount and a reference inside it somewhere deep in the middle of the text and therefore must never be parsed as a payment at all because it is a marketing message and not a transaction receipt 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 more text follows to push this broadcast past the sensible length limit for a payment notification so that the listener discards it before any provider adapter is asked to interpret it, and only at the very end does it mention that you have received Tk 999 from 01712345678 with TrxID SHOULDNOTPARSE which must be ignored because the whole message is far too long to be a real notification and no amount of matching words at the end should change that",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "not_a_payment_message"
+      },
+      "note": "Length gate. A broadcast that embeds a real-looking notification must be discarded before any adapter sees it, not parsed because it contains a matching phrase."
+    },
+    {
+      "id": "rocket-cash-in-leading",
+      "captured": false,
+      "sender": "Rocket",
+      "body": "Rocket: Cash In Tk 300 from 01812345678 at 25 Dec 2024 10:15 pm. TrxID: RK1234567890",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "rocket",
+        "amount": 300,
+        "transactionId": "RK1234567890",
+        "senderAccount": "01812345678",
+        "receiverAccount": null,
+        "transactionTimestamp": "2024-12-25T16:15:00.000Z"
+      },
+      "note": "Label-led rather than sentence-led, with the time trailing. Rocket's anchor list is ordered accordingly."
+    },
+    {
+      "id": "rocket-received-standard",
+      "captured": false,
+      "sender": "Rocket",
+      "body": "You have received Tk 300 from 01812345678. Your Rocket balance Tk 2,700.00. TrxID: RK7654321098",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "rocket",
+        "amount": 300,
+        "transactionId": "RK7654321098",
+        "senderAccount": "01812345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "Canonical Rocket shape."
+    },
+    {
+      "id": "rocket-received-no-sender",
+      "captured": false,
+      "sender": "Rocket",
+      "body": "Rocket: You have received Tk 150. TrxID: RKNOSND01",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "rocket",
+        "amount": 150,
+        "transactionId": "RKNOSND01",
+        "senderAccount": null,
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "Walk-in payment."
+    },
+    {
+      "id": "upay-received-standard",
+      "captured": false,
+      "sender": "Upay",
+      "body": "You have received Tk 1,200.00 from 01912345678. Your Upay balance Tk 8,000.00. TrxID: UP99887766",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "upay",
+        "amount": 1200,
+        "transactionId": "UP99887766",
+        "senderAccount": "01912345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "Canonical Upay shape. Upay has no payment_method value, so the engine records it as 'other' when it settles."
+    },
+    {
+      "id": "upay-brand-spelled-with-space",
+      "captured": false,
+      "sender": "U Pay",
+      "body": "U Pay: You have received Tk 430 from 01412345678. TrxID: UP430AA",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "upay",
+        "amount": 430,
+        "transactionId": "UP430AA",
+        "senderAccount": "01412345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "Brand spelled 'U Pay' with a space."
+    },
+    {
+      "id": "upay-received-no-sender",
+      "captured": false,
+      "sender": "Upay",
+      "body": "U Pay: You have received Tk 275.50. TrxID: UPNOSND01",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "upay",
+        "amount": 275.5,
+        "transactionId": "UPNOSND01",
+        "senderAccount": null,
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "Walk-in payment with a fractional amount and no payer number. Must still parse."
+    },
+    {
+      "id": "unrelated-personal-sms",
+      "captured": false,
+      "sender": "01712345678",
+      "body": "Are we still on for tomorrow? I will bring the sample.",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "not_a_payment_message"
+      },
+      "note": "An ordinary personal message. Must leave no trace at all -- not even a row saying one arrived."
+    },
+    {
+      "id": "marketing-mentions-provider",
+      "captured": false,
+      "sender": "bKash",
+      "body": "bKash: Enjoy 10% cashback on every payment this weekend. Tap to claim.",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "not_a_payment_message"
+      },
+      "note": "Names the provider and the word 'payment', but states no transfer. A parser that accepted anything containing 'payment' would credit every promotion blast."
+    },
+    {
+      "id": "unsupported-provider-payment",
+      "captured": false,
+      "sender": "DBBL",
+      "body": "You have received Tk 500.00 from 01812345678. Your balance Tk 2,500.00. TrxID: DB12345678",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "unsupported_provider"
+      },
+      "note": "Reads unmistakably as a received payment from a provider SellFlow does not parse. Reported separately from 'not a payment' because the response is different: a parser is missing, not a filter misfiring."
+    },
+    {
+      "id": "bank-alert-not-a-mfs-transfer",
+      "captured": false,
+      "sender": "Bank",
+      "body": "Your account has been credited Tk 500.00 by cash deposit. Avail bal Tk 5,000.00.",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "unsupported_provider"
+      },
+      "note": "A bank credit, not an MFS transfer. SellFlow only reconciles MFS notifications because those are the ones an MFS account can receive."
+    }
+  ]
+}

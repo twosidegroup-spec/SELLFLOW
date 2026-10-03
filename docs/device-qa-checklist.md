@@ -1,251 +1,240 @@
-# SellFlow V1 — Physical Device QA Checklist
+# Device QA checklist
 
-Reproducible manual test plan for a human holding a real Android phone (and
-optionally an iPhone). **Nothing in this document has been executed yet** — no
-device, emulator, or Android SDK is available in the build environment, so every
-row below starts as `NOT TESTED`.
+The gate for the native SMS payment adapter. Nothing in this file has been executed
+by the authoring environment, which has no JDK, no Android SDK, no `adb` and no
+connected handset. Every row below is therefore **NOT TESTED**, and must not be
+reported as verified until it has actually been run.
 
-Mark each row `PASS` / `FAIL` / `BLOCKED` and record the failure under
-**Findings**. Do not mark a row `PASS` from reading the code.
+Sign-off means: every row executed on real hardware against a real provider
+message, with the evidence column filled in.
 
----
-
-## 0. Prerequisites
-
-| Item | Value |
-|---|---|
-| Android application ID | `com.sellflow.app` |
-| iOS bundle identifier | `com.sellflow.app` |
-| Deep link scheme | `sellflow://` |
-| Minimum Android | API 24 (Android 7.0) |
-| Minimum iOS | 16.4 |
-
-Environment required before the app is useful:
-
-- A Supabase project with all 14 migrations applied
-  (`npx supabase db push`).
-- `.env` holding `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`.
-  The anon key is the only credential the app ever receives.
-
-### Installing a build
-
-```bash
-npm install
-npx eas login                       # once per tester
-npx eas build --profile preview --platform android
-# upload the returned .apk, or:
-npx eas build --profile preview --platform android --local   # no cloud build
-```
-
-`preview` produces an **APK**, which installs by enabling "install unknown apps"
-on the handset. No store review is involved. For a build that talks to the
-Metro dev server instead, use `--profile development` and run
-`npx expo start --dev-client`.
-
-For iOS, the build and the install both require macOS with Xcode, plus a
-developer account to sign the app. **Not possible from Windows.**
+**Test device** ______________________  **Android version** ____________
+**App build** ________________________  **Signed profile** ______________
+**Tester** ____________________________  **Date** _________________________
 
 ---
 
-## A. Installation and lifecycle
+## A. Environment
 
-| # | Check | Result |
-|---|---|---|
-| A1 | Installs on the device | |
-| A2 | App icon and name render correctly | |
-| A3 | First launch shows the splash, then sign-in | |
-| A4 | Launch with no network shows a clear message, not a blank screen or a crash | |
-| A5 | Launch with network reaches the dashboard | |
-| A6 | Background then foreground restores the previous screen | |
-| A7 | Force-quit and relaunch keeps the user signed in | |
-| A8 | Force-quit and relaunch with no `.env` shows "SellFlow is not connected" | |
+| # | Step | Command / action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| A1 | Install dependencies | `npm ci` | Completes | NOT TESTED |
+| A2 | Regenerate native project | `npx expo prebuild --platform android` | Completes | NOT TESTED |
+| A3 | Manifest has exactly one permission | `grep -c "android.permission.RECEIVE_SMS" android/app/src/main/AndroidManifest.xml` | `1` | NOT TESTED |
+| A4 | Manifest has exactly one receiver | `grep -c "<receiver" android/app/src/main/AndroidManifest.xml` | `1` | NOT TESTED |
+| A5 | Manifest has exactly one application | `grep -c "<application" android/app/src/main/AndroidManifest.xml` | `1` | NOT TESTED |
+| A6 | No forbidden permission | `grep -cE "READ_SMS\|SEND_SMS\|WRITE_SMS\|RECEIVE_MMS\|RECEIVE_WAP_PUSH\|BROADCAST_SMS\|READ_CONTACTS\|CALL_LOG" android/app/src/main/AndroidManifest.xml` | `0` | NOT TESTED |
+| A7 | The module autolinks | `npx expo-modules-autolinking resolve --platform android --json \| grep SellflowSmsModule` | One match | NOT TESTED |
+| A8 | Prebuild is idempotent | Re-run A2, then A3–A5 | Still `1`/`1`/`1` | NOT TESTED |
+| A9 | Repository verification | `npm test` | All green | NOT TESTED |
+| A10 | Provider parser suite | `cd android && ./gradlew :sellflow-sms:testDebugUnitTest` | Passes | NOT TESTED |
 
-## B. Authentication and session
+> A10 is the first execution of the Kotlin provider parsers. If a fixture fails
+> here, the parser disagrees with the corpus in
+> `modules/sellflow-sms/android/src/test/resources/fixtures/payment-sms.json` —
+> fix whichever is wrong before going further, and note which.
 
-| # | Check | Result |
-|---|---|---|
-| B1 | Sign up with a new email creates a business | |
-| B2 | Sign in with a wrong password shows "Incorrect email or password", not a raw error | |
-| B3 | Sign out returns to sign-in and clears the session | |
-| B4 | Session persists across a restart | |
-| B5 | After the token expires, the app prompts to sign in rather than showing a broken dashboard | |
-| B6 | "Forgot password" sends a real email | |
-| B7 | Onboarding appears exactly once for a new account | |
+## B. Build and install
 
-## C. Navigation
+| # | Step | Command / action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| B1 | Device visible | `adb devices` | Device listed, state `device` | NOT TESTED |
+| B2 | Build and launch | `npx expo run:android` | App opens | NOT TESTED |
+| B3 | Metro reachable | App loads screens, no red screen | Loads | NOT TESTED |
+| B4 | Package id is correct | `adb shell pm list packages \| grep sellflow` | `com.sellflow.app` | NOT TESTED |
+| B5 | APK installs cleanly | `adb install -r android/app/build/outputs/apk/debug/app-debug.apk` | `Success` | NOT TESTED |
 
-| # | Check | Result |
-|---|---|---|
-| C1 | All five tabs reachable: Home, Orders, Products, Customers, More | |
-| C2 | Analytics and Finance reachable from More | |
-| C3 | Notifications reachable from the Home header | |
-| C4 | Android **back gesture** pops one screen, then leaves the app from a tab root | |
-| C5 | Android **back button** behaves identically to the gesture | |
-| C6 | Back from a modal/sheet dismisses the sheet, not the screen beneath | |
-| C7 | Content is not hidden under the status bar or gesture bar (safe areas) | |
-| C8 | Bottom navigation is fully visible and not overlapped by content | |
-| C9 | Screen transitions animate smoothly and are interruptible | |
+## C. Sign in and connect an account
 
-## D. Keyboard and forms
+| # | Step | Action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| C1 | Email + password sign-in | Sign in | Lands on the dashboard | NOT TESTED |
+| C2 | No phone/password auth | Observe the sign-in screen | Email and password only | NOT TESTED |
+| C3 | Connect a payment account | Payments → `+` → bKash number `017XXXXXXXX` | Row appears, masked | NOT TESTED |
+| C4 | Number normalised | Enter `+880171…` | Saved as `0171…`, rewrite shown | NOT TESTED |
+| C5 | A bad number is refused | Enter `12345` | Save disabled | NOT TESTED |
+| C6 | Opening the screen | Payments → Automatic detection | Status screen opens | NOT TESTED |
+| C7 | **Before** permission | Status shows *Permission needed* | No "connected" state | NOT TESTED |
 
-Repeat for: sign-up, sign-in, onboarding, product form, customer form, new order,
-expense form, business settings, account settings.
+## D. Permission
 
-| # | Check | Result |
-|---|---|---|
-| D1 | No field is covered by the keyboard | |
-| D2 | The submit button stays reachable with the keyboard open | |
-| D3 | Scrolling while the keyboard is open reveals the focused field | |
-| D4 | Focus advances predictably between fields | |
-| D5 | Keyboard dismisses on scroll and on tap outside | |
-| D6 | Validation messages stay visible with the keyboard open | |
-| D7 | Numeric fields open a numeric keypad; phone fields a phone keypad | |
-| D8 | Bangla text renders (no tofu boxes) | |
-| D9 | Mixed Bangla/English renders | |
+| # | Step | Action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| D1 | Explanation is shown first | Read the card | States why, in plain words | NOT TESTED |
+| D2 | The OS dialog appears | Tap *Allow payment messages* | System dialog | NOT TESTED |
+| D3 | Grant | Allow | Status becomes *Waiting for payment* | NOT TESTED |
+| D4 | Listener is active | Status → *Device listener* | `Active` | NOT TESTED |
+| D5 | Receiver is registered | `adb shell dumpsys package com.sellflow.app \| grep SMS_RECEIVED` | Present | NOT TESTED |
+| D6 | Revocation is honoured | `adb shell pm revoke com.sellflow.app android.permission.RECEIVE_SMS` | Status → *Permission not granted* | NOT TESTED |
+| D7 | The app still works after denial | Record a payment by hand on an order | Order records the payment | NOT TESTED |
+| D8 | No fake healthy state | After D6 | No green "connected" anywhere | NOT TESTED |
+| D9 | Re-grant | Re-enable in Settings, reopen the screen | Returns to *Waiting* | NOT TESTED |
 
-## E. Products
+## E. Detection: no real money yet
 
-| # | Check | Result |
-|---|---|---|
-| E1 | Create a product with only a name | |
-| E2 | Selling price and cost price accept decimals | |
-| E3 | Margin is shown and updates as prices change | |
-| E4 | Opening stock is recorded and the movement appears in history | |
-| E5 | Available / reserved / sold are three different numbers | |
-| E6 | Low-stock threshold produces a warning at or below the level | |
-| E7 | Archive hides the product from pickers but keeps past orders intact | |
-| E8 | Search finds by both name and SKU | |
-| E9 | Currency renders as `Tk` with two decimals and thousands separators | |
+| # | Step | Action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| E1 | Empty state is honest | Look at *Waiting to send* | Empty | NOT TESTED |
+| E2 | Nothing claimed yet | Look at *Last detected* | *Nothing yet* | NOT TESTED |
+| E3 | An unrelated message is ignored | Send a personal SMS to the device | No event appears | NOT TESTED |
+| E4 | A marketing blast is ignored | Send a bKash promotional SMS | No event appears | NOT TESTED |
+| E5 | A bank alert is not treated as MFS | Send a bank credit SMS | No event, or unsupported-provider count only | NOT TESTED |
 
-## F. Customers
+## F. A REAL payment message
 
-| # | Check | Result |
-|---|---|---|
-| F1 | Create a customer with only a name | |
-| F2 | Create a second customer with the **same phone** → the duplicate panel appears before saving | |
-| F3 | Same name, different phone → shown as a candidate, not merged | |
-| F4 | Tapping a candidate opens that customer instead of creating a duplicate | |
-| F5 | "This is a different person" is required before saving, then saves | |
-| F6 | Customer profile shows order history and totals | |
-| F7 | A 120-character name does not break the row or the screen | |
-| F8 | A long Bangla address is readable or clearly truncated | |
+The section that matters. Requires someone to actually send money to the connected
+account.
 
-## G. Orders
+| # | Step | Action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| F1 | Make a real payment | Send 50 BDT to the connected number from another phone | Provider SMS arrives | NOT TESTED |
+| F2 | Receiver fires | `adb logcat -s SellflowSms:V` | A candidate is queued | NOT TESTED |
+| F3 | Provider identified | Status / parser check | Correct provider | NOT TESTED |
+| F4 | Fields parsed | Parser check panel | Correct amount, reference, payer | NOT TESTED |
+| F5 | **Balance not read as amount** | Parser check on the real message | Transfer, not balance | NOT TESTED |
+| F6 | Timestamp | Parser check | Present, or honestly absent | NOT TESTED |
+| F7 | Normalised event created | Event appears in Payments → Review or activity | Present | NOT TESTED |
+| F8 | Reaches the backend | Event has a `payment_events` row | Yes | NOT TESTED |
+| F9 | Fingerprint stored | Inspect the row | 64-hex hash, no message text | NOT TESTED |
+| F10 | `detected_by` recorded | Inspect the row | `android:<rel>:sms:<ver>:p<n>` | NOT TESTED |
+| F11 | Matching ran | Inspect `payment_matches` | A candidate exists | NOT TESTED |
+| F12 | Settlement boundary called | Inspect `payments` | One row, `client_ref` = event id | NOT TESTED |
+| F13 | Order becomes paid | Open the order | `payment_status` = paid | NOT TESTED |
+| F14 | Finance reconciles | Finance screen | The amount appears | NOT TESTED |
+| F15 | UI reflects backend truth | Status screen | *Confirmed*, from the engine's verdict | NOT TESTED |
 
-Create one order and walk it through the whole lifecycle.
+### Record the captured message
 
-| # | Check | Result |
-|---|---|---|
-| G1 | Create an order with a customer, items, quantity, delivery fee | |
-| G2 | Live summary shows the correct payable amount throughout | |
-| G3 | Stock is deducted on creation | |
-| G4 | `pending → confirmed → processing → packaging → packed → shipped → on delivery → delivered` all succeed | |
-| G5 | An illegal jump (e.g. `pending → delivered`) is not offered | |
-| G6 | Cancelling restores stock exactly once | |
-| G7 | Delivery failure does **not** restock | |
-| G8 | Return **does** restock | |
-| G9 | Timeline shows one entry per real move, not per tap | |
-| G10 | Tapping "Change status" repeatedly does not duplicate timeline entries | |
-| G11 | Order of 2000 units is refused when stock is lower | |
+Copy the **real** provider message into
+`modules/sellflow-sms/android/src/test/resources/fixtures/payment-sms.json` with
+`"captured": true` and a note naming the operator and handset, then re-run A10.
 
-## H. Payments
+**Until this is done for a provider, that provider's parser is "representative
+fixture tested" and nothing more.** Do not describe it as verified.
 
-| # | Check | Result |
-|---|---|---|
-| H1 | Partial payment, then the balance | |
-| H2 | Payment larger than the balance is refused | |
-| H3 | Rapid double-tap on "Record payment" records once | |
-| H4 | Simulate a network failure mid-payment, then retry → records once | |
-| H5 | Same key + same amount → one payment | |
-| H6 | Same key + **different** amount → explicit "That payment was already recorded", original untouched | |
-| H7 | Refund retries record once | |
-| H8 | Refund larger than the payment is refused |
+## G. Duplicate and replay
 
-## I. Offline
+| # | Step | Action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| G1 | Redeliver the message | Re-send the identical SMS, or `adb shell am broadcast` the intent | One event only | NOT TESTED |
+| G2 | Reparse | Parser check on the same text, then ingest | `duplicate: true` | NOT TESTED |
+| G3 | Queue dedupe | Force a redelivery while queued | One queued row | NOT TESTED |
+| G4 | One ledger row | Inspect `payments` | Exactly one | NOT TESTED |
+| G5 | Ten flushes, one payment | Trigger many passes | One `payment_events`, one `payments` | NOT TESTED |
+| G6 | Replayed with a new fingerprint | Same TrxID, different hash | Still a duplicate | NOT TESTED |
 
-| # | Check | Result |
-|---|---|---|
-| I1 | Enable airplane mode; the banner appears | |
-| I2 | Create an order offline → queued, and **not** reported as saved | |
-| I3 | A stock adjustment offline is **refused** with a clear message, not queued | |
-| I4 | A payment offline is **refused**, not queued | |
-| I5 | Force-quit the app, reopen offline → the queued order is still listed | |
-| I6 | Disable airplane mode → the queue drains automatically, oldest first | |
-| I7 | Settings → Data shows the replay result and the last sync time | |
-| I8 | Disconnect mid-replay, then reconnect → resumes without duplicating | |
-| I9 | Dashboard figures are unchanged until the queue actually drains | |
+## H. Negative cases
 
-## J. Couriers
+| # | Step | Action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| H1 | Underpayment | Intent 1,000, send 400 | Review, order unpaid | NOT TESTED |
+| H2 | Overpayment | Intent 500, send 1,000 | Review, not silent settlement | NOT TESTED |
+| H3 | Wrong receiving account | Message naming an unconnected number | `account_mismatch`, review | NOT TESTED |
+| H4 | Unknown customer | Payment with no payer number | Review, `medium` | NOT TESTED |
+| H5 | No sender invented | Walk-in payment | `sender_account` is null | NOT TESTED |
+| H6 | Two orders, same amount | Two intents for 500, send 500 | `ambiguous_candidates`, review | NOT TESTED |
+| H7 | Expired intent | Wait out the window, then pay | No settlement, review | NOT TESTED |
+| H8 | Disconnected account | Switch the account off, then pay | Refused or review | NOT TESTED |
+| H9 | Seller's manual entry | Record by hand | Works, same boundary | NOT TESTED |
 
-### Pathao (requires credentials)
+## I. Offline, retry, background
 
-**Stop at the authentication boundary if no credentials are configured.**
+| # | Step | Action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| I1 | Airplane mode | Enable, receive a payment | Detected, shown as queued | NOT TESTED |
+| I2 | No attempt burned | Inspect the queue | 0 attempts consumed | NOT TESTED |
+| I3 | Restore the network | Disable airplane mode | Sent within ~30 s | NOT TESTED |
+| I4 | Sent once | Inspect the backend | One event | NOT TESTED |
+| I5 | App killed | `adb shell am force-stop com.sellflow.app`, receive a payment | Candidate queued natively | NOT TESTED |
+| I6 | App closed, then opened | Open the app | Delivered | NOT TESTED |
+| I7 | Device reboot | `adb reboot`, wait, open the app | Queue intact | NOT TESTED |
+| I8 | Many offline payments | Ten payments while offline | All queued, all delivered once | NOT TESTED |
+| I9 | Server down | Stop the backend, pay | Retried, then delivered | NOT TESTED |
+| I10 | Session expired | Sign out, receive a payment | Queue pauses, says *Sign in to send* | NOT TESTED |
+| I11 | Permanent refusal | A malformed message | Stops retrying, shown as needing attention | NOT TESTED |
 
-| # | Check | Result |
-|---|---|---|
-| J1 | Credentials authenticate against the Pathao sandbox | |
-| J2 | One real shipment is created and a consignment ID is returned | |
-| J3 | The consignment ID and tracking link are stored against the order | |
-| J4 | The order timeline reflects the courier's status | |
-| J5 | A webhook updates the order end to end | |
-| J6 | Rapid double-tap on "Send to courier" creates exactly one parcel | |
-| J7 | A timeout shows an uncertain state and never claims "Shipment Created" | |
-| J8 | A courier rejection is reported in plain language | |
+## J. Privacy
 
-### REDX / manual fallback
+The rows that must hold, with a way to check each one rather than a promise.
 
-| # | Check | Result |
-|---|---|---|
-| J9 | Manual entry records courier, tracking ID and tracking link | |
-| J10 | "Current status" can be set at creation and changed later | |
-| J11 | A status change appears in the timeline, attributed to the seller | |
-| J12 | Repeating a status does not duplicate the timeline | |
-| J13 | Delivery/return states are recorded and restock correctly | |
-| J14 | Tracking ID, tracking link and the customer message can be copied | |
-| J15 | Dispatch is blocked before packing | |
-| J16 | Dispatch is blocked with no delivery address | |
+| # | Step | Command / action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| J1 | No inbox access | `adb shell dumpsys package com.sellflow.app \| grep -c READ_SMS` | `0` | NOT TESTED |
+| J2 | Not the default SMS app | Settings → default SMS app is not SellFlow | Unchanged | NOT TESTED |
+| J3 | **No message text in logs** | `adb logcat -d \| grep -i "Tk\|received Tk\|TrxID:"` after a payment | **No match** | NOT TESTED |
+| J4 | No message text on disk | `adb shell run-as com.sellflow.app ls -R files shared_prefs` | No message content | NOT TESTED |
+| J5 | No message text in storage | Inspect AsyncStorage via the dev menu | Structured fields only | NOT TESTED |
+| J6 | No message text on the wire | Proxy or server log of `ingest_payment_event` | 11 fields, no text | NOT TESTED |
+| J7 | Nothing to a third party | Capture all traffic during a payment | Only the seller's own Supabase host | NOT TESTED |
+| J8 | Hash only | Inspect `payment_events.fingerprint` | 64 hex characters | NOT TESTED |
+| J9 | Unrelated messages leave nothing | Send five unrelated SMS | No rows, no counts, no logs | NOT TESTED |
+| J10 | A passcode is not a payment | Receive an OTP | No event | NOT TESTED |
+| J11 | Diagnostics stores nothing | Paste a message in the parser check | Nothing persisted | NOT TESTED |
 
-## K. Rapid-tap protection
+> J3 is the single most important row here. A single line of message text in
+> `logcat` invalidates every claim in `docs/privacy-sms.md`. If it fails, that is a
+> release blocker, not a bug to note.
 
-Tap each of these as fast as the phone allows, 20 times each:
+## K. Security — a hostile device
 
-| # | Action | Expected duplicates | Result |
-|---|---|---|---|
-| K1 | Create order | 0 | |
-| K2 | Save customer | 0 | |
-| K3 | Save product | 0 | |
-| K4 | Record payment | 0 | |
-| K5 | Record refund | 0 | |
-| K6 | Send to courier | 0 parcels | |
-| K7 | Cancel order | 0 extra restocks | |
+| # | Step | Action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| K1 | Replay a captured request | Replay an `ingest_payment_event` body | `duplicate: true` | NOT TESTED |
+| K2 | Forge an account id | Substitute another business's account id | `payment_account_not_found` | NOT TESTED |
+| K3 | Forge a tenant | Add `org_id` / `store_id` to the body | Ignored; no effect | NOT TESTED |
+| K4 | Forge an order or intent | Add `order_id` / `intent_id` | Ignored; no effect | NOT TESTED |
+| K5 | Forge an amount | Any amount | Server validates; mismatches never settle | NOT TESTED |
+| K6 | Forge a reference | Any reference | Must be ≥ 4 chars; duplicates refused | NOT TESTED |
+| K7 | Forge a status | Add `payment_status: paid` | Ignored; no column for it | NOT TESTED |
+| K8 | Call `record_payment` directly | From the client | Not reachable | NOT TESTED |
+| K9 | Call settlement directly | From the client | Not granted to any client role | NOT TESTED |
+| K10 | Read-only staff | Sign in as staff, connect an account, detect a payment | Refused | NOT TESTED |
+| K11 | Anonymous | Call ingest without a session | Refused | NOT TESTED |
+| K12 | No key in the APK | `unzip -p app-release.apk \| grep service_role` | No match | NOT TESTED |
 
-## L. Appearance
+## L. Per-provider real-message check
 
-| # | Check | Result |
-|---|---|---|
-| L1 | Light mode: text and icons are readable everywhere | |
-| L2 | Dark mode: no unreadable white-on-light text, no invisible controls | |
-| L3 | System theme switching updates the app live | |
-| L4 | Buttons show a disabled state while a request is in flight | |
-| L5 | Loading skeletons do not jump into content | |
-| L6 | Empty states explain what to do next | |
-| L7 | Error states say what happened and what to do | |
+One row per provider. **Run this before release.** A provider without a captured
+message is unverified, and saying so is required.
+
+| Provider | Captured message added to the corpus | Parser accepts it | Fields correct | Re-run A10 |
+| --- | --- | --- | --- | --- |
+| bKash | NOT DONE | NOT TESTED | NOT TESTED | NOT TESTED |
+| Nagad | NOT DONE | NOT TESTED | NOT TESTED | NOT TESTED |
+| Rocket | NOT DONE | NOT TESTED | NOT TESTED | NOT TESTED |
+| Upay | NOT DONE | NOT TESTED | NOT TESTED | NOT TESTED |
+
+## M. Cross-platform regression
+
+| # | Step | Command / action | Expected | Result |
+| --- | --- | --- | --- | --- |
+| M1 | iOS config unaffected | `npx expo prebuild --platform ios` | No SMS entries in `Info.plist` | NOT TESTED |
+| M2 | Web still runs | `npm run dev:web` | Loads; detection reports unsupported | NOT TESTED |
+| M3 | Expo config valid | `npx expo config --type prebuild` | Resolves, no warnings | NOT TESTED |
+| M4 | expo-doctor | `npx expo-doctor` | No issues | NOT TESTED |
 
 ---
 
 ## Findings
 
-Record every `FAIL` here. A row that fails is a release blocker, not a note.
-
-| # | Severity | Summary | Status |
-|---|---|---|---|
-| | | | |
-
----
+| # | Section | What happened | Severity | Follow-up |
+| --- | --- | --- | --- | --- |
+| | | | | |
 
 ## Sign-off
 
-- [ ] All sections attempted
-- [ ] All `FAIL` rows have a fix or an accepted risk
-- [ ] Pathao section completed **or** explicitly marked blocked on credentials
-- [ ] Findings reviewed by a second person
+Automatic payment detection may be announced as available when:
+
+1. Sections A–K pass on real hardware against a real provider message.
+2. **Every provider in section L has a captured message in the fixture corpus**, or
+   the report states in plain words which providers are unverified.
+3. Section J shows no message text in logs, storage, or on the wire.
+
+Until then the correct description of this feature is: *implemented and verified
+locally; real-device verification pending.*
+
+| | Name | Date |
+| --- | --- | --- |
+| Implemented by | | |
+| Device QA by | | |
+| Release approved by | | |
