@@ -19,14 +19,16 @@ import {
   Link2,
   LogOut,
   Moon,
-  Receipt,
-  Store,
+Receipt,
+    Smartphone,
+    Store,
   UserCog,
   Wallet,
 } from 'lucide-react-native';
 
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Card, Divider, Screen, SectionHeader, Text } from '@/components/ui';
+import { usePaymentReview } from '@/features/payments/queries';
 import { useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -38,6 +40,10 @@ export default function MoreScreen() {
   const user = useSession((state) => state.user);
   const role = useSession((state) => state.role);
   const signOut = useSession((state) => state.signOut);
+
+  // Surfaces the count on the menu row, so the seller learns there is work
+  // waiting without opening Payments first.
+  const reviewCount = usePaymentReview(organization?.id).count;
 
   const isOwner = role === 'owner';
 
@@ -98,6 +104,22 @@ export default function MoreScreen() {
                 title="Customer orders"
                 subtitle="Requests from your order links"
                 onPress={() => router.push('/(app)/order-requests')}
+              />
+              <Divider />
+              {/*
+                Payment detection lives here rather than in the tab bar: the bar
+                is five fixed destinations by design, and this is a tool a seller
+                opens when a payment needs checking, not a place they live.
+              */}
+              <MenuRow
+                icon={Smartphone}
+                title="Payments"
+                subtitle={
+                  reviewCount > 0
+                    ? `${reviewCount} payment${reviewCount === 1 ? '' : 's'} to review`
+                    : 'Accounts, waiting payments, matches'
+                }
+                onPress={() => router.push('/(app)/payments')}
               />
               <Divider />
               <MenuRow

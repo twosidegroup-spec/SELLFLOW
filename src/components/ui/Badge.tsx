@@ -8,7 +8,13 @@
 
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import type { OrderStatus, PaymentStatus } from '@/lib/database.types';
+import type {
+  OrderStatus,
+  PaymentEventStatus,
+  PaymentIntentStatus,
+  PaymentMatchStrength,
+  PaymentStatus,
+} from '@/lib/database.types';
 import { useTheme } from '@/theme/ThemeProvider';
 import { Text } from './Text';
 
@@ -45,6 +51,83 @@ export function PaymentStatusBadge({ status, style }: { status: PaymentStatus; s
 
 export function statusLabel(status: OrderStatus): string {
   return ORDER_STATUS[status].label;
+}
+
+/**
+ * Payment engine badges.
+ *
+ * The colours carry the review queue's meaning, so they are chosen by what the
+ * seller has to DO rather than by the database enum name:
+ *
+ *   confirmed        green  -- money is on the order, nothing to do
+ *   review_required  amber  -- the engine saw it and refused; a person decides
+ *   unmatched        amber  -- real money, nothing was waiting for it
+ *   mismatch         red    -- the numbers do not line up
+ *   duplicate        grey   -- correctly ignored, never counted twice
+ *
+ * `customer_phone_matched` being null versus false is the reason `medium` and
+ * `weak` are distinct words here: one means "nobody could be identified" and the
+ * other means "the wrong person sent it".
+ */
+
+const EVENT_STATUS: Record<PaymentEventStatus, { label: string; tone: Tone }> = {
+  detected: { label: 'Detected', tone: 'info' },
+  matched: { label: 'Matched', tone: 'info' },
+  confirmed: { label: 'Confirmed', tone: 'success' },
+  unmatched: { label: 'No order found', tone: 'warning' },
+  mismatch: { label: 'Does not match', tone: 'danger' },
+  duplicate: { label: 'Already counted', tone: 'neutral' },
+  rejected: { label: 'Rejected', tone: 'neutral' },
+  review_required: { label: 'Needs review', tone: 'warning' },
+};
+
+export function PaymentEventStatusBadge({
+  status,
+  style,
+}: {
+  status: PaymentEventStatus;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const entry = EVENT_STATUS[status] ?? { label: status, tone: 'neutral' as Tone };
+  return <Badge label={entry.label} tone={entry.tone} style={style} />;
+}
+
+const MATCH_STRENGTH: Record<PaymentMatchStrength, { label: string; tone: Tone }> = {
+  strong: { label: 'Confident', tone: 'success' },
+  medium: { label: 'Amount only', tone: 'warning' },
+  weak: { label: 'Unlikely', tone: 'danger' },
+  manual: { label: 'By you', tone: 'info' },
+};
+
+export function PaymentMatchBadge({
+  strength,
+  style,
+}: {
+  strength: PaymentMatchStrength;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const entry = MATCH_STRENGTH[strength] ?? { label: strength, tone: 'neutral' as Tone };
+  return <Badge label={entry.label} tone={entry.tone} style={style} />;
+}
+
+const INTENT_STATUS: Record<PaymentIntentStatus, { label: string; tone: Tone }> = {
+  open: { label: 'Waiting', tone: 'info' },
+  matched: { label: 'Paid', tone: 'success' },
+  partially_paid: { label: 'Part paid', tone: 'warning' },
+  expired: { label: 'Expired', tone: 'neutral' },
+  cancelled: { label: 'Stopped', tone: 'neutral' },
+  mismatched: { label: 'Mismatch', tone: 'danger' },
+};
+
+export function PaymentIntentStatusBadge({
+  status,
+  style,
+}: {
+  status: PaymentIntentStatus;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const entry = INTENT_STATUS[status] ?? { label: status, tone: 'neutral' as Tone };
+  return <Badge label={entry.label} tone={entry.tone} style={style} />;
 }
 
 /** The forward path, in order. Drives the "next step" shortcut on order detail. */

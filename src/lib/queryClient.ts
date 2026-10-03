@@ -82,6 +82,17 @@ export const keys = {
   topProducts: (storeId: string, from: string, to: string) =>
     ['top-products', storeId, from, to] as const,
 
-  notifications: () => ['notifications'] as const,
-  unreadCount: () => ['notifications', 'unread-count'] as const,
-} as const;
+notifications: () => ['notifications'] as const,
+    unreadCount: () => ['notifications', 'unread-count'] as const,
+
+    // Payment engine.
+    //
+    // Keyed by org, not store: a payment account belongs to the business, and a
+    // seller running two stores expects the same bKash number in both. Matching
+    // then narrows to the store via the intent's order.
+    paymentAccounts: (orgId: string) => ['payment-accounts', orgId] as const,
+    paymentIntents: (orgId: string) => ['payment-intents', orgId] as const,
+    orderIntents: (orderId: string) => ['payment-intents', 'order', orderId] as const,
+    paymentReview: (orgId: string) => ['payment-review', orgId] as const,
+    paymentActivity: (orgId: string) => ['payment-activity', orgId] as const,
+  } as const;

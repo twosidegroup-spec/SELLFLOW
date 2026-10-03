@@ -440,6 +440,163 @@ export type NotificationPreferenceRow = RowBase & {
  * and RPC is declared so the client is fully typed end to end -- a typo in a
  * column name becomes a compile error rather than a runtime 400.
  */
+// ---------------------------------------------------------------------------
+// Payment detection engine (migrations 0022-0024)
+//
+// `payment_provider` records which MFS reported a payment; `payment_method`
+// (above) records how the seller says they took the money. They are separate
+// because the MFS set grows faster -- Upay has no payment_method value and
+// records as 'other'. See docs/payment-engine.md.
+// ---------------------------------------------------------------------------
+
+export type PaymentEventSource = 'sms' | 'api' | 'manual' | 'import';
+
+export type PaymentProvider = 'bkash' | 'nagad' | 'rocket' | 'upay';
+
+export type PaymentAccountStatus = 'pending' | 'connected' | 'disconnected' | 'error';
+
+export type PaymentIntentType = 'order' | 'subscription' | 'invoice' | 'other';
+
+export type PaymentIntentStatus =
+  | 'open'
+  | 'matched'
+  | 'partially_paid'
+  | 'expired'
+  | 'cancelled'
+  | 'mismatched';
+
+/**
+ * Lifecycle of one detected payment.
+ *
+ * `duplicate` is a real outcome and not an error: a phone that reconnects and
+ * re-reads the same SMS is recorded, and never credited twice.
+ */
+export type PaymentEventStatus =
+  | 'detected'
+  | 'matched'
+  | 'confirmed'
+  | 'unmatched'
+  | 'mismatch'
+  | 'duplicate'
+  | 'rejected'
+  | 'review_required';
+
+/**
+ * How the engine matched, and how much it trusts itself.
+ *
+ * Only `strong` auto-settles, and only when exactly one candidate reaches it.
+ * `manual` means a person decided; the underlying signals are still stored, so
+ * "the engine was sure" stays distinguishable from "the seller was sure".
+ */
+export type PaymentMatchStrength = 'strong' | 'medium' | 'weak' | 'manual';
+
+export type PaymentMatchStatus = 'candidate' | 'accepted' | 'rejected';
+
+export type PaymentAuditActor = 'seller' | 'system';
+
+export type PaymentAccountRow = RowBase & {
+  id: string;
+  org_id: string;
+  provider: PaymentProvider;
+  /** Digits as the seller typed them. Matching uses the normalised form. */
+  account_number: string;
+  account_type: string;
+  label: string | null;
+  status: PaymentAccountStatus;
+  is_active: boolean;
+  created_by: string | null;
+  updated_at: string;
+  last_seen_at: string | null;
+};
+
+export type PaymentIntentRow = RowBase & {
+  id: string;
+  org_id: string;
+  type: PaymentIntentType;
+  /** orders.id for 'order'. Polymorphic, so deliberately not a foreign key. */
+  reference_id: string | null;
+  payment_account_id: string | null;
+  expected_amount: number;
+  currency: string;
+  expected_customer_phone: string | null;
+  expected_customer_name: string | null;
+  status: PaymentIntentStatus;
+  expires_at: string;
+  settled_amount: number | null;
+  settled_at: string | null;
+  settled_payment_event_id: string | null;
+  client_ref: string | null;
+  created_by: string | null;
+  updated_at: string;
+};
+
+export type PaymentEventRow = RowBase & {
+  id: string;
+  org_id: string;
+  payment_account_id: string;
+  provider: PaymentProvider;
+  receiver_account: string;
+  sender_account: string | null;
+  amount: number;
+  currency: string;
+  transaction_id: string;
+  transaction_timestamp: string | null;
+  detected_at: string;
+  source: PaymentEventSource;
+  /** Hash of the raw transport message. Never the message itself. */
+  fingerprint: string | null;
+  status: PaymentEventStatus;
+  receiver_account_normalized: string | null;
+  sender_account_normalized: string | null;
+  mismatch_reason: string | null;
+  review_note: string | null;
+  client_ref: string | null;
+  detected_by: string | null;
+  matched_intent_id: string | null;
+  payment_id: string | null;
+  created_by: string | null;
+  updated_at: string;
+};
+
+/** No `updated_at`: a match row is a decision record, not mutable state. */
+export type PaymentMatchRow = {
+  id: string;
+  created_at: string;
+  org_id: string;
+  payment_event_id: string;
+  payment_intent_id: string;
+  strength: PaymentMatchStrength;
+  status: PaymentMatchStatus;
+  reason_code: string;
+  reason_detail: string | null;
+  amount_delta: number | null;
+  account_matched: boolean;
+  provider_matched: boolean;
+  amount_matched: boolean;
+  /** null when the payer could not be verified -- distinct from false. */
+  customer_phone_matched: boolean | null;
+  within_window: boolean;
+  created_by: string | null;
+};
+
+export type PaymentAuditLogRow = {
+  /** bigint identity column, so a number rather than a string. */
+  id: number;
+  org_id: string;
+  actor_kind: PaymentAuditActor;
+  /** null when actor_kind is 'system': a machine is not a person. */
+  actor_id: string | null;
+  action: string;
+  payment_event_id: string | null;
+  payment_intent_id: string | null;
+  payment_account_id: string | null;
+  payment_match_id: string | null;
+  target_type: string | null;
+  target_id: string | null;
+  metadata: Json;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -575,15 +732,150 @@ export type Database = {
         Update: Partial<Omit<CourierConnectionRow, 'id' | 'org_id'>>;
         Relationships: [];
       };
-      courier_locations: {
-        Row: CourierLocationRow;
-        Insert: Partial<Omit<CourierLocationRow, 'id' | 'created_at' | 'updated_at'>> & Pick<CourierLocationRow, 'org_id' | 'kind' | 'external_id' | 'name'>;
-        Update: never;
-        Relationships: [];
+courier_locations: {
+          Row: CourierLocationRow;
+          Insert: Partial<Omit<CourierLocationRow, 'id' | 'created_at' | 'updated_at'>> & Pick<CourierLocationRow, 'org_id' | 'kind' | 'external_id' | 'name'>;
+          Update: never;
+          Relationships: [];
+        };
+        // Payment engine.
+        //
+        // `Insert: never` and `Update: never` are load-bearing, not shorthand.
+        // 0024 revokes INSERT/UPDATE/DELETE from anon and authenticated, so a
+        // direct write is already denied at runtime -- but a denied write is a
+        // failed request someone will retry. Making the payload types `never`
+        // turns any attempt to write the ledger from the app into a TypeScript
+        // compile error instead, at the point of writing the code.
+        //
+        // Every mutation goes through an RPC below.
+        payment_accounts: {
+          Row: PaymentAccountRow;
+          Insert: never;
+          Update: never;
+          Relationships: [];
+        };
+        payment_intents: {
+          Row: PaymentIntentRow;
+          Insert: never;
+          Update: never;
+          Relationships: [];
+        };
+        payment_events: {
+          Row: PaymentEventRow;
+          Insert: never;
+          Update: never;
+          Relationships: [];
+        };
+        payment_matches: {
+          Row: PaymentMatchRow;
+          Insert: never;
+          Update: never;
+          Relationships: [];
+        };
+        payment_audit_logs: {
+          Row: PaymentAuditLogRow;
+          Insert: never;
+          Update: never;
+          Relationships: [];
+        };
       };
-    };
-    Views: Record<string, never>;
+      Views: Record<string, never>;
     Functions: {
+      // --- Payment engine (0022-0024) ---------------------------------------
+      // These are the ONLY way the app touches the payment tables. Each one
+      // re-authorises server-side; the client is never trusted for org_id.
+      create_payment_account: {
+        Args: {
+          p_org_id: string;
+          p_provider: PaymentProvider;
+          p_account_number: string;
+          p_account_type?: string;
+          p_label?: string | null;
+        };
+        Returns: PaymentAccountRow;
+      };
+      set_payment_account_status: {
+        Args: {
+          p_account_id: string;
+          p_status: PaymentAccountStatus;
+          p_is_active?: boolean | null;
+        };
+        Returns: PaymentAccountRow;
+      };
+      create_payment_intent: {
+        Args: {
+          p_type: PaymentIntentType;
+          p_reference_id: string | null;
+          p_payment_account_id: string;
+          p_expected_amount: number;
+          p_expected_customer_phone?: string | null;
+          p_expected_customer_name?: string | null;
+          p_expires_at?: string | null;
+          p_client_ref?: string | null;
+        };
+        Returns: PaymentIntentRow;
+      };
+      cancel_payment_intent: {
+        Args: { p_intent_id: string; p_reason?: string | null };
+        Returns: PaymentIntentStatus;
+      };
+      /**
+       * The single write path for a detected payment.
+       *
+       * Idempotent on (provider, account, transaction id) at the database
+       * level: re-delivering the same transaction returns the original event
+       * with `duplicate: true` instead of creating a second ledger row.
+       */
+      ingest_payment_event: {
+        Args: {
+          p_payment_account_id: string;
+          p_provider: PaymentProvider;
+          p_receiver_account: string;
+          p_sender_account: string | null;
+          p_amount: number;
+          p_transaction_id: string;
+          p_transaction_timestamp?: string | null;
+          p_source?: PaymentEventSource;
+          p_fingerprint?: string | null;
+          p_client_ref?: string | null;
+          p_detected_by?: string | null;
+        };
+        /** `{ event_id, status, duplicate, message }` */
+        Returns: Json;
+      };
+      /**
+       * Scores every plausible intent and auto-settles only an unambiguous
+       * strong match. A replay reports `already_processed: true` and
+       * `settled: false`, so a retried request can never be mistaken for a fresh
+       * confirmation.
+       */
+      match_payment_event: {
+        Args: { p_event_id: string };
+        Returns: Json;
+      };
+      /** The seller's decision. Everything automatic refuses is settleable here. */
+      assign_payment_match: {
+        Args: { p_event_id: string; p_intent_id: string; p_note?: string | null };
+        Returns: Json;
+      };
+      reject_payment_match: {
+        Args: { p_event_id: string; p_reason?: string | null };
+        Returns: boolean;
+      };
+      expire_stale_payment_intents: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      /** Pure. Canonicalises a BD number to 01XXXXXXXXX for matching. */
+      payment_normalize_bk_number: {
+        Args: { p_raw: string };
+        Returns: string;
+      };
+      /** Pure. Upay has no payment_method value and maps to 'other'. */
+      payment_provider_method: {
+        Args: { p_provider: PaymentProvider };
+        Returns: PaymentMethod;
+      };
       bootstrap_business: {
         Args: { p_business_name: string; p_store_name?: string | null; p_store_code?: string | null };
         Returns: Json;
@@ -791,8 +1083,17 @@ export type Database = {
       notification_kind: NotificationKind;
       courier_provider: CourierProvider;
       shipment_state: ShipmentState;
-      settlement_state: SettlementState;
-    };
+settlement_state: SettlementState;
+        payment_event_source: PaymentEventSource;
+        payment_provider: PaymentProvider;
+        payment_account_status: PaymentAccountStatus;
+        payment_intent_type: PaymentIntentType;
+        payment_intent_status: PaymentIntentStatus;
+        payment_event_status: PaymentEventStatus;
+        payment_match_strength: PaymentMatchStrength;
+        payment_match_status: PaymentMatchStatus;
+        payment_audit_actor: PaymentAuditActor;
+      };
     CompositeTypes: Record<string, never>;
   };
 }

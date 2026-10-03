@@ -114,6 +114,12 @@ export default function AppLayout() {
       <Stack.Screen name="customer/[id]" />
       <Stack.Screen name="expense/index" />
       <Stack.Screen name="expense/new" options={{ animation: 'slide_from_bottom' }} />
+      {/* Payment detection engine. The hub and the queue are screens you read;
+          the two forms slide from the bottom like every other form here. */}
+      <Stack.Screen name="payments" />
+      <Stack.Screen name="payment-review" />
+      <Stack.Screen name="payment-account/new" options={{ animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="payment-intent/new" options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="notifications" options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="settings/business" />
       <Stack.Screen name="settings/account" />

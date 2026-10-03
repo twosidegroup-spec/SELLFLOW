@@ -246,17 +246,54 @@ if they did not, a genuine payment would silently fail to match. Non-mobile inpu
 passes through untouched rather than being coerced into something that could match by
 accident. Normalised forms are used for matching only, never for display.
 
+## The client layer
+
+`src/features/payments/` holds the only code that talks to these tables.
+
+- `queries.ts` — reads. The review queue deliberately reads `payment_matches`,
+  including the rejected candidates, because "why did this not settle my order?"
+  is unanswerable without them.
+- `mutations.ts` — writes, and every one is an RPC. There is no `.insert()`,
+  `.update()` or `.upsert()` against a payment table anywhere.
+- `normalize.ts` — the client mirror of `payment_normalize_bk_number`, used only
+  to show the seller the canonical form of what they typed. The server
+  normalises again and is the authority.
+
+`database.types.ts` declares all five payment tables with `Insert: never` and
+`Update: never`. That is load-bearing rather than shorthand: the write path being
+unavailable is then a **compile error at the point the code is written**, not a
+request that fails at runtime and gets retried.
+
+Screens:
+
+| Screen | Route | Purpose |
+| --- | --- | --- |
+| Payments | `/(app)/payments` | Accounts, what needs review, how detection decides |
+| Connect an account | `/(app)/payment-account/new` | The number customers pay into |
+| Wait for a payment | `/(app)/payment-intent/new?orderId=` | Publishes an intent from an order |
+| Review payments | `/(app)/payment-review` | The queue, with candidates and reasons |
+
+Payments is a pushed route, not a sixth tab: the tab bar is five fixed
+destinations by design. It is reached from **More**, which surfaces the pending
+review count on the row so the seller learns there is work waiting without
+opening anything.
+
+On an order, "Record payment" and "Wait for a mobile payment" sit next to each
+other because they are opposites. The first is the seller asserting money moved.
+The second publishes an intent for the engine to match a real notification
+against, so the order can be paid without touching the screen again.
+
 ## What is deliberately not here
 
 - **No SMS permission, receiver or parser.** That is Phase 3, gated on the policy
-  work in `docs/google-play-sms-policy.md`. The schema and engine are complete
-  without it, and `source = 'manual'` already works end to end.
-- **No subscription settlement.** `subscription` intents record and audit correctly,
-  but there is no subscription table yet, so nothing pretends to have activated
-  anything. The non-order branch of `settle_event_to_intent` is where Phase 3 grows
-  the real settlement.
-- **No raw message storage.** See the minimum-scope section of the Play policy doc;
-  this is a policy requirement as much as a design choice.
-- **No client queries layer yet.** The tables are readable and the RPCs are callable,
-  but no React Query hooks or screens exist. Phase 2 is the foundation; the UI comes
-  next, including the review queue the engine is designed to feed.
+  work in `docs/google-play-sms-policy.md`. The schema, engine and UI are
+  complete without it, and `source = 'manual'` already works end to end.
+- **No subscription settlement.** `subscription` intents record and audit
+  correctly, but there is no subscription table yet, so nothing pretends to have
+  activated anything. The non-order branch of `settle_event_to_intent` is where
+  Phase 3 grows the real settlement.
+- **No raw message storage.** See the minimum-scope section of the Play policy
+  doc; this is a policy requirement as much as a design choice.
+- **No ingestion UI for 'sms'.** `ingest_payment_event` accepts a source and the
+  data layer exposes manual entry, but nothing in the app reads an SMS yet. The
+  native listener is the only missing producer.

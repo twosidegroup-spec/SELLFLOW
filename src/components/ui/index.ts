@@ -14,7 +14,16 @@ export {
   RatioMetric,
   currencySymbol,
 } from './Amount';
-export { Badge, OrderStatusBadge, PaymentStatusBadge, STATUS_FLOW, statusLabel } from './Badge';
+export {
+  Badge,
+  OrderStatusBadge,
+  PaymentStatusBadge,
+  PaymentEventStatusBadge,
+  PaymentMatchBadge,
+  PaymentIntentStatusBadge,
+  STATUS_FLOW,
+  statusLabel,
+} from './Badge';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { Card, DetailRow, Divider, SectionHeader } from './Card';
 export { FilterChip, SearchBar, SegmentedControl, useDebouncedValue, type SegmentOption } from './Controls';

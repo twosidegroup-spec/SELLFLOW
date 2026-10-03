@@ -19,6 +19,7 @@ import {
   CircleDot,
   MapPin,
   Package,
+  Smartphone,
   Truck,
   Undo2,
   User,
@@ -52,6 +53,7 @@ import {
   statusLabel,
 } from '@/components/ui';
 import { useCouriers } from '@/features/dashboard/queries';
+import { providerLabel, useOrderIntents } from '@/features/payments/queries';
 import {
   useMarkShipped,
   useRecordSettlement,
@@ -109,6 +111,9 @@ export default function OrderDetailScreen() {
   const items = useOrderItems(orderId);
   const history = useOrderHistory(orderId);
   const payments = usePayments(orderId);
+  // Intents this order is already waiting on, shown next to the button that
+  // creates them so a seller is never told to start waiting twice.
+  const openIntents = useOrderIntents(orderId).open;
   const allowed = useAllowedStatuses(orderId);
   const settlement = useSettlement(orderId);
   const couriers = useCouriers(organization?.id);
@@ -385,14 +390,54 @@ export default function OrderDetailScreen() {
               ) : null}
 
               {canWrite && !isClosed ? (
-                <Button
-                  label={due > 0 ? 'Record payment' : 'Record another payment'}
-                  icon={Banknote}
-                  variant={due > 0 ? 'success' : 'secondary'}
-                  onPress={() => setPaymentSheet(true)}
-                  block
-                  style={{ marginTop: spacing.md }}
-                />
+                <>
+                  <Button
+                    label={due > 0 ? 'Record payment' : 'Record another payment'}
+                    icon={Banknote}
+                    variant={due > 0 ? 'success' : 'secondary'}
+                    onPress={() => setPaymentSheet(true)}
+                    block
+                    style={{ marginTop: spacing.md }}
+                  />
+
+                  {/*
+                    Two ways to settle an order, and they are not the same
+                    thing. "Record payment" is the seller asserting money changed
+                    hands. "Wait for a payment" is the opposite: it publishes an
+                    intent for the detection engine to match a real MFS
+                    notification against, so an order can be paid without the
+                    seller touching this screen at all.
+
+                    Only offered while something is outstanding, because waiting
+                    for money that is already recorded would be meaningless.
+                  */}
+                  {due > 0 ? (
+                    <Button
+                      label={
+                        openIntents.length > 0
+                          ? 'Waiting for a payment'
+                          : 'Wait for a mobile payment'
+                      }
+                      icon={Smartphone}
+                      variant="secondary"
+                      onPress={() => router.push(`/(app)/payment-intent/new?orderId=${orderId}`)}
+                      block
+                      style={{ marginTop: spacing.sm }}
+                    />
+                  ) : null}
+
+                  {openIntents.length > 0 ? (
+                    <Text variant="micro" tone="muted" style={{ marginTop: spacing.xs }}>
+                      Waiting for{' '}
+                      {formatMoney(openIntents[0]?.expected_amount ?? 0, currency, EXACT)}
+                      {openIntents[0]?.accounts
+                        ? ` on ${openIntents[0].accounts.label ?? providerLabel(openIntents[0].accounts.provider)}`
+                        : ''}
+                      . If a matching payment is detected it will be applied
+                      automatically.
+                    </Text>
+                  ) : null}
+                </>
               ) : null}
 
               {payments.data && payments.data.length > 0 ? (
