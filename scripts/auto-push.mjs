@@ -411,7 +411,19 @@ function worker(dir) {
   }
 }
 
-async function waitForCompletion(dir, timeoutMs = Number(process.env.SELLFLOW_AUTOPUSH_WAIT_MS) || 120_000) {
+/**
+ * Blocks until the background push reaches a terminal state.
+ *
+ * The default is deliberately generous. A real push of this repository on the
+ * connection it is developed over takes around five minutes for an 8.8 MiB pack,
+ * and a 120s default reported `timeout` on a push that then succeeded -- a false
+ * failure in the one command whose entire job is to tell the truth about whether
+ * a push landed. Override with SELLFLOW_AUTOPUSH_WAIT_MS when testing.
+ */
+async function waitForCompletion(
+  dir,
+  timeoutMs = Number(process.env.SELLFLOW_AUTOPUSH_WAIT_MS) || 15 * 60 * 1000,
+) {
   const started = Date.now();
 
   while (Date.now() - started < timeoutMs) {
