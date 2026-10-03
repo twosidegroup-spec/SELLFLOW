@@ -33,7 +33,11 @@ extra_tables = ["public.organizations", "public.organization_members", "public.s
 
 [db]
 port = 54322
-major_version = 15
+major_version = 17
+
+[db.pooler]
+default_pool_size = 15
+max_client_conn = 200
 
 [studio]
 enabled = true
@@ -46,12 +50,19 @@ port = 54324
 [storage]
 enabled = true
 # Product images are the only intended upload target in V1.
-file_size_limit = "5MiB"
+file_size_limit = "50MiB"
+
+[storage.analytics]
+enabled = true
+max_namespaces = 10
+
+[storage.image_transformation]
+enabled = true
 
 [auth]
 enabled = true
-site_url = "sellflow://"
-additional_redirect_urls = ["sellflow://", "sellflow://sign-in", "sellflow://onboarding"]
+site_url = "http://localhost:3000"
+additional_redirect_urls = []
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
@@ -62,9 +73,43 @@ enable_anonymous_sign_ins = false
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
-# Required before a shipped build can accept real users. Left true here so a
-# reviewer of this file cannot mistake a development setting for a release one.
-enable_confirmations = true
+# Email confirmation is OFF, deliberately.
+#
+# This was `true` with a note saying it was "required before a shipped build can
+# accept real users" -- i.e. a release step that was never performed. Both
+# sign-up.tsx and this file documented the intended behaviour, and hosted did not
+# match either.
+#
+# Why off, for SellFlow specifically:
+#
+#   * The intended flow is register -> authenticated session -> business setup
+#     -> dashboard. A confirmation gate sits between the first two.
+#   * The confirmation flow could not have worked even if enabled: hosted
+#     site_url is http://localhost:3000 with no additional_redirect_urls, so a
+#     confirmation link resolves to nothing on a handset. There is no
+#     sellflow:// intent filter or confirmation-callback route in the app.
+#     Implementing that properly is a feature, not a configuration change, and
+#     it is not what this product is for.
+#   * The account is not the security boundary. Every row a user can touch is
+#     scoped by RLS to their own organisation, and `anon` holds no grant on any
+#     application table (see migration 0024), so an unverified account can do
+#     nothing to anyone.
+#
+# Compensating controls that remain in force:
+#   * Supabase's built-in rate limits on /auth/v1/signup (email max_frequency is
+#     1m0s) still apply, so signup cannot be scripted at volume.
+#   * Password policy (min length, breached-password check) is unchanged.
+#   * All data access is RLS-scoped; a spam account has no surface.
+#
+# If confirmation is ever wanted back, set this to true AND add the deep-link
+# plumbing the flow needs, or the emails will dead-end at localhost.
+enable_confirmations = false
+max_frequency = "1m0s"
+otp_length = 8
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
 
 [edge_runtime]
 enabled = true

@@ -76,9 +76,14 @@
     "test:finance-wording": "node --import ./scripts/register-loader.mjs --test scripts/finance-wording.test.mjs",
     "design:audit": "node --import ./scripts/register-loader.mjs scripts/design-audit.mjs",
     "design:visual": "node --import ./scripts/register-loader.mjs scripts/visual-system-audit.mjs",
-    "test": "npm run typecheck && npm run lint && npm run test:connectivity && npm run test:outbox && npm run test:errors && npm run test:money && npm run test:money-format && npm run test:finance-wording && npm run test:order-form && npm run test:payment-normalize && npm run design:audit && npm run design:visual && npm run db:test",
+    "test": "npm run typecheck && npm run lint && npm run test:connectivity && npm run test:outbox && npm run test:errors && npm run test:money && npm run test:money-format && npm run test:finance-wording && npm run test:order-form && npm run test:payment-normalize && npm run test:auto-push && npm run design:audit && npm run design:visual && npm run db:test",
     "db:verify:hosted": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-hosted.ps1",
-    "test:payment-normalize": "node --import ./scripts/register-loader.mjs --test scripts/payment-normalize.test.mjs"
+    "test:payment-normalize": "node --import ./scripts/register-loader.mjs --test scripts/payment-normalize.test.mjs",
+    "test:auto-push": "node --test --test-timeout=120000 scripts/auto-push.test.mjs",
+    "push:now": "node scripts/auto-push.mjs --now",
+    "push:wait": "node scripts/auto-push.mjs --wait",
+    "push:status": "node scripts/auto-push.mjs --status",
+    "auth:verify": "node scripts/verify-auth.mjs"
   },
   "private": true
 }
