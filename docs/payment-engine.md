@@ -3,9 +3,62 @@
 How a payment becomes money on an order in SellFlow, and why each step is built the
 way it is.
 
-Implemented in `supabase/migrations/0022_payment_tables.sql` (schema and ingestion)
-and `supabase/migrations/0023_payment_matching.sql` (matching and settlement).
-Verified by `supabase/test/verify_payment_engine.sql`.
+Implemented in `supabase/migrations/0022_payment_tables.sql` (schema and ingestion),
+`0023_payment_matching.sql` (matching and settlement) and
+`0024_payment_grants.sql` (explicit least privilege).
+Verified by `supabase/test/verify_payment_engine.sql` (behaviour) and
+`supabase/test/verify_payment_schema.sql` (structural contract).
+
+---
+
+## A privilege trap that only a hosted project can show
+
+Migration 0024 exists because of a finding that local testing structurally
+could not produce.
+
+Supabase projects carry project-level **default privileges** on the `public`
+schema that grant `arwdDxtm` — INSERT, SELECT, UPDATE, DELETE, TRUNCATE,
+REFERENCES, TRIGGER, MAINTAIN — to **both `anon` and `authenticated`** for every
+table created in `public`. Local verification runs on vanilla Postgres, which has
+no such defaults.
+
+So after 0022/0023 applied cleanly, the payment tables looked correctly
+SELECT-only locally and on hosted carried:
+
+```
+ACL payment_events : postgres=arwdDxtm/postgres
+                     anon=arwdDxtm/postgres
+                     authenticated=arwdDxtm/postgres
+```
+
+The app was not exploitable: RLS has no INSERT/UPDATE/DELETE policy on those
+tables, so RLS default-denied every write, and the only SELECT policy is
+`is_org_member(org_id)`, false for anon. But the entire write protection of a money
+ledger was resting on *the absence of a policy* — anyone who later added a policy
+for an unrelated reason, or created a project with different defaults, would have
+inherited table-level CRUD silently. "Passes locally, fails on hosted" was the
+only symptom.
+
+`0024` therefore revokes explicitly and asserts the result in the same
+transaction, so a migration whose revokes fail loudly instead of being recorded as
+applied. The rule worth carrying forward: **on this schema, never rely on a
+privilege being absent. Revoke it.**
+
+Two related notes, stated plainly rather than overclaimed:
+
+- The settlement functions are revoked from `service_role` too, because default
+  privileges grant it EXECUTE on every function. That does **not** stop a holder
+  of the service key from writing the tables directly, since `service_role` has
+  `BYPASSRLS`. That is inherent to the admin role and cannot be revoked away; the
+  real protection is that the app never ships the service key.
+- The behavioural suites (`verify_payment_engine.sql` and the app-wide suites)
+  **cannot run against the hosted project**. `supabase test db --linked` connects
+  as a restricted role that cannot write the `auth` schema, and
+  `profiles.id → auth.users`, so no fixture can be created. `verify_concurrency`
+  is additionally excluded everywhere-hosted because it commits fixtures and
+  creates `dblink`. Hosted is therefore verified structurally (61 checks) and by
+  a write-counter leak check; behaviour is verified locally against
+  byte-identical migrations.
 
 ---
 
