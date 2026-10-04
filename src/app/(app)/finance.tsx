@@ -11,7 +11,7 @@
  * Every figure comes from get_finance, which computes them from rows.
  */
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { Wallet } from 'lucide-react-native';
@@ -25,7 +25,9 @@ import {
   ErrorState,
   SegmentedControl,
   Skeleton,
+  SellflowRefreshControl,
   Text,
+  useRefresh,
 } from '@/components/ui';
 import { useFinance } from '@/features/dashboard/queries';
 import { AppError } from '@/lib/errors';
@@ -66,6 +68,19 @@ export default function FinanceScreen() {
   }, [range]);
 
   const finance = useFinance(store?.id, window_.from, window_.to);
+  // Destructured so the refresh callback depends on the function itself.
+  const { refetch } = finance;
+
+  /*
+   * Like Analytics: a date-window query with no refetch on focus, so revenue and
+   * profit were stale on every entry. These are the two figures a seller is most
+   * likely to check after taking a payment elsewhere.
+   */
+  const refresh = useRefresh(
+    useCallback(async () => {
+      await refetch();
+    }, [refetch]),
+  );
   const data = finance.data;
 
   return (
@@ -86,6 +101,7 @@ export default function FinanceScreen() {
           paddingBottom: spacing.xxxl,
         }}
         showsVerticalScrollIndicator={false}
+        refreshControl={<SellflowRefreshControl {...refresh} />}
       >
         <SegmentedControl
           options={RANGES}

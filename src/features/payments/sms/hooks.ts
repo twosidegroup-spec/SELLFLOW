@@ -240,7 +240,7 @@ export interface SmsDetectionStatus {
 }
 
 /**
- * The seller-facing view of automatic detection.
+ * The seller-facing view of payment automation.
  *
  * Combines three proven sources and nothing else: the native listener's own state,
  * the local delivery queue, and the engine's verdicts. The engine's status column

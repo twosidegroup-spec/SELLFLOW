@@ -1,9 +1,9 @@
 /**
  * Screen shell.
  *
- * Owns the things every screen needs to get right and that are easy to get
- * wrong individually: safe-area insets (notch, dynamic island, Android gesture
- * bar), keyboard avoidance, scroll behaviour, and background colour.
+ * Owns the things every screen needs to get right and that are easy to get wrong
+ * individually: safe-area insets (notch, dynamic island, Android gesture bar),
+ * keyboard avoidance, scroll behaviour, and background colour.
  *
  * Screens pass content rather than re-implementing any of this.
  */
@@ -13,7 +13,6 @@ import { useCallback } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   View,
@@ -22,12 +21,26 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { SellflowRefreshControl } from './Refresh';
 import { useTheme } from '@/theme/ThemeProvider';
 
 export interface ScreenProps {
   children: React.ReactNode;
-  /** Wraps children in a ScrollView. Off for screens that own a FlatList. */
+  /**
+   * Wraps children in a ScrollView. Off for screens that own a FlatList.
+   *
+   * A `scroll={false}` screen cannot be refreshed by `Screen`, because
+   * `RefreshControl` belongs to the scrollable and `Screen` does not own it. Use
+   * `ListScreen`, which injects a themed one into the list.
+   */
   scroll?: boolean;
+  /**
+   * Pull-to-refresh. Only meaningful with `scroll`.
+   *
+   * Pass the pair from `useRefresh` rather than a query flag: a `refreshing` value
+   * that is not tied to the request is what makes an indicator feel broken,
+   * either because it never appears or because it appears unprompted.
+   */
   onRefresh?: () => void;
   refreshing?: boolean;
   /** Extra bottom padding, e.g. to clear a floating action button. */
@@ -60,6 +73,19 @@ export function Screen({
     // No-op hook point: ScrollView auto-adjusts. Kept out of the render path.
   }, []);
 
+  /*
+   * The Products tab used to pass `onRefresh` to a `scroll={false}` screen and
+   * have it silently discarded, because the refresh props were only ever read in
+   * the ScrollView branch -- so that tab had no pull-to-refresh at all, with no
+   * type error and no warning. Warn rather than fail silently.
+   */
+  if (__DEV__ && !scroll && onRefresh) {
+    console.warn(
+      '[Screen] onRefresh has no effect when scroll={false}. Use ListScreen, or pass the ' +
+        'refreshControl to your own scrollable.',
+    );
+  }
+
   const body = scroll ? (
     <ScrollView
       style={styles.flex}
@@ -78,15 +104,7 @@ export function Screen({
       showsVerticalScrollIndicator={false}
       onContentSizeChange={handleContentSizeChange}
       refreshControl={
-        onRefresh ? (
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.textMuted}
-            colors={[colors.primary]}
-            progressBackgroundColor={colors.surface}
-          />
-        ) : undefined
+        onRefresh ? <SellflowRefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined
       }
     >
       {children}
@@ -125,20 +143,32 @@ export function Screen({
  * Split out from `Screen` because a FlatList must be the direct child of the
  * scroll container -- nesting one inside another breaks recycling and is the
  * most common cause of a list that feels sluggish.
+ *
+ * Takes the refresh handler and injects a themed `RefreshControl` into the list,
+ * so a list screen cannot end up with the platform default indicator or with a
+ * `refreshing` flag that is not tied to the request.
  */
 export function ListScreen({
   children,
   style,
   contentContainerStyle,
   bottomInset = 0,
+  onRefresh,
+  refreshing = false,
 }: {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   bottomInset?: number;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+
+  const refreshControl = onRefresh ? (
+    <SellflowRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+  ) : undefined;
 
   return (
     <KeyboardAvoidingView
@@ -155,6 +185,7 @@ export function ListScreen({
                 ...(contentContainerStyle as object | undefined),
               },
             ],
+            refreshControl,
           })
         : children}
     </KeyboardAvoidingView>

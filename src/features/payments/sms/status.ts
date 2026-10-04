@@ -1,5 +1,5 @@
 /**
- * What the seller is told about automatic detection.
+ * What the seller is told about payment automation.
  *
  * One pure function from facts to a status, so the wording can be tested and so
  * the status screen and the Payments hub can never disagree about whether
@@ -99,7 +99,7 @@ export interface DetectionCopy {
 const COPY: Record<DetectionStatus, DetectionCopy> = {
   unsupported_platform: {
     title: 'Not available on this device',
-    body: 'Automatic detection reads payment messages on Android. You can still record every payment by hand.',
+    body: 'Payment automation reads payment messages on Android. You can still record every payment by hand.',
     tone: 'neutral',
   },
   permission_required: {
@@ -114,12 +114,12 @@ const COPY: Record<DetectionStatus, DetectionCopy> = {
   },
   receiver_unavailable: {
     title: 'Listener not running',
-    body: 'The payment listener is not active on this build. Automatic detection is unavailable until it is.',
+    body: 'Payment automation is not active on this build. It is unavailable until the listener is.',
     tone: 'danger',
   },
   no_accounts: {
-    title: 'No payment account connected',
-    body: 'Connect the bKash, Nagad, Rocket or Upay number your customers pay into. Until then there is nothing to detect against.',
+    title: 'No receiving account connected',
+    body: 'Connect the bKash, Nagad, Rocket or Upay receiving number your customers pay into. Until then there is nothing to detect against.',
     tone: 'warning',
   },
   sign_in_required: {
@@ -154,7 +154,7 @@ const COPY: Record<DetectionStatus, DetectionCopy> = {
   },
   waiting: {
     title: 'Waiting for payment',
-    body: 'Listening. When a customer pays into a connected account, SellFlow will notice.',
+    body: 'Payment automation is on. When a customer pays into a connected account, SellFlow will notice.',
     tone: 'success',
   },
 };

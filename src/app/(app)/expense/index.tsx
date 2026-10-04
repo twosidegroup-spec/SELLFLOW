@@ -21,8 +21,10 @@ import {
   ErrorState,
   ListRowSkeleton,
   SectionHeader,
+  SellflowRefreshControl,
   Text,
   confirm,
+  useRefresh,
 } from '@/components/ui';
 import { useSalesReport } from '@/features/dashboard/queries';
 import { expenseLabel, useDeleteExpense, useExpenses } from '@/features/expenses/queries';
@@ -42,6 +44,19 @@ export default function ExpensesScreen() {
   const currency = (organization?.currency ?? 'BDT') as CurrencyCode;
 
   const expenses = useExpenses(store?.id);
+  // Destructured so the refresh callback depends on the function itself.
+  const { refetch } = expenses;
+
+  /*
+   * Tied to the seller's gesture rather than to `isFetching`, which also rises
+   * for the refetch-on-focus below. The indicator should mean "you pulled", not
+   * "the screen happened to reload".
+   */
+  const refresh = useRefresh(
+    useCallback(async () => {
+      await refetch();
+    }, [refetch]),
+  );
   const deleteExpense = useDeleteExpense();
 
   const now = new Date();
@@ -85,8 +100,7 @@ export default function ExpensesScreen() {
           flexGrow: 1,
         }}
         showsVerticalScrollIndicator={false}
-        onRefresh={() => void expenses.refetch()}
-        refreshing={expenses.isFetching && !expenses.isLoading}
+          refreshControl={<SellflowRefreshControl {...refresh} />}
         onEndReached={expenses.loadMore}
         onEndReachedThreshold={0.5}
         ListHeaderComponent={
@@ -97,7 +111,7 @@ export default function ExpensesScreen() {
                 <Text variant="heading">Month to date</Text>
               </View>
 
-              <AmountRow label="Sales revenue" value={revenue} currency={currency} />
+              <AmountRow label="Revenue" value={revenue} currency={currency} />
               <AmountRow label="Gross profit" value={grossProfit} currency={currency} />
               <AmountRow
                 label="Expenses"

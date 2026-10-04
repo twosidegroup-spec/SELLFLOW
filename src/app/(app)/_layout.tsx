@@ -85,7 +85,7 @@ export default function AppLayout() {
 
   if (status === 'loading') return <LoadingState />;
   if (status === 'signed-out') return <Redirect href="/sign-in" />;
-  if (status === 'needs-onboarding') return <Redirect href="/onboarding" />;
+  if (status === 'needs-onboarding') return <Redirect href="/register" />;
 
   // A failed workspace read is a connection problem, not an authentication
   // one, and must not send the seller back to a sign-in form they do not need.

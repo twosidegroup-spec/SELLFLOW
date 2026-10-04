@@ -211,13 +211,13 @@ export default function NewPaymentIntentScreen() {
                 <CircleSlash size={18} color={colors.danger} />
               </RowIcon>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text variant="caption">No payment account connected</Text>
+                <Text variant="caption">No receiving account connected</Text>
                 <Text variant="micro" tone="muted">
-                  Connect the account customers pay into first — a payment can
+                  Connect the receiving number customers pay into first — a payment can
                   only be recognised against a connected number.
                 </Text>
                 <Button
-                  label="Connect an account"
+                  label="Connect a receiving account"
                   size="sm"
                   variant="secondary"
                   onPress={() => router.push('/(app)/payment-account/new')}

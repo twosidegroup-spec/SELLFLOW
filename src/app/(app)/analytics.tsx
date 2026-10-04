@@ -8,7 +8,7 @@
  * actually trying to make.
  */
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { BarChart3, TrendingUp, Trophy } from 'lucide-react-native';
@@ -23,7 +23,9 @@ import {
   ErrorState,
   SegmentedControl,
   Skeleton,
+  SellflowRefreshControl,
   Text,
+  useRefresh,
 } from '@/components/ui';
 import {
   useAnalytics,
@@ -78,6 +80,20 @@ export default function AnalyticsScreen() {
   const window_ = useMemo(() => rangeFor(range), [range]);
 
   const analytics = useAnalytics(store?.id, window_.from, window_.to);
+  // Destructured so the refresh callback depends on the function itself.
+  const { refetch } = analytics;
+
+  /*
+   * Analytics is a date-window query with no refetch on focus, so a seller who
+   * changed the range, left, and came back saw the same figures. Pull-to-refresh
+   * is the cheapest honest fix; it belongs here for the same reason it belongs on
+   * every money screen.
+   */
+  const refresh = useRefresh(
+    useCallback(async () => {
+      await refetch();
+    }, [refetch]),
+  );
   const performance = useProductPerformance(store?.id, window_.from, window_.to);
 
   const data = analytics.data;
@@ -110,6 +126,7 @@ export default function AnalyticsScreen() {
           paddingBottom: spacing.xxxl,
         }}
         showsVerticalScrollIndicator={false}
+        refreshControl={<SellflowRefreshControl {...refresh} />}
       >
         <SegmentedControl
           options={RANGES}

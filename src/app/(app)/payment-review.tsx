@@ -49,8 +49,10 @@ import {
   PaymentMatchBadge,
   RowIcon,
   SectionHeader,
+  SellflowRefreshControl,
   Text,
   confirm,
+  useRefresh,
 } from '@/components/ui';
 import {
   providerLabel,
@@ -80,6 +82,19 @@ export default function PaymentReviewScreen() {
 
   const orgId = organization?.id;
   const review = usePaymentReview(orgId);
+  // Destructured so the refresh callback depends on the function itself.
+  const { refetch } = review;
+
+  /*
+   * Tied to the seller's gesture rather than to `isFetching`. This screen also
+   * refetches on focus, and deriving the indicator from that made it flash on
+   * every visit -- which reads as the app reloading itself unbidden.
+   */
+  const refresh = useRefresh(
+    useCallback(async () => {
+      await refetch();
+    }, [refetch]),
+  );
   const match = useMatchPaymentEvent(orgId);
   const assign = useAssignPaymentMatch(orgId);
   const reject = useRejectPaymentMatch(orgId);
@@ -169,8 +184,7 @@ export default function PaymentReviewScreen() {
           gap: spacing.xs,
         }}
         showsVerticalScrollIndicator={false}
-        onRefresh={() => void review.refetch()}
-        refreshing={review.isFetching && !review.isLoading}
+            refreshControl={<SellflowRefreshControl {...refresh} />}
         renderItem={({ item }) => (
           <ReviewCard
             event={item}

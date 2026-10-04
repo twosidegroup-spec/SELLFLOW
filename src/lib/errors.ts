@@ -246,7 +246,14 @@ const DATABASE_ERRORS: Record<string, { title: string; action: string }> = {
     title: 'That already exists',
     action: 'Refresh the list to see the newest entry.',
   },
-};
+    // Raised by `create_payment_account`. Without this it fell through to the
+    // generic "Value not allowed", which told a seller nothing about the one
+    // thing they had just typed wrong.
+    invalid_account_number: {
+      title: 'That receiving number is not valid',
+      action: 'Enter the number using digits only, for example 01712345678.',
+    },
+  };
 
 /** PostgREST/Postgres error codes that are not app-level conditions. */
 const POSTGREST_CODES: Record<string, { title: string; action: string }> = {
@@ -440,4 +447,40 @@ export function isOfflineError(error: unknown): boolean {
     return error.code === '' || /network|fetch|timeout|ECONNRESET/i.test(error.message);
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Payment account errors
+// ---------------------------------------------------------------------------
+
+/**
+ * A failure while connecting a receiving account, in the seller's terms.
+ *
+ * `create_payment_account` has a unique index on (org, provider, account_number)
+ * and no ON CONFLICT clause, so a repeat comes back as a bare `23505`. The
+ * generic copy for that code -- "That already exists / Refresh to see the newest
+ * entry" -- is actively wrong here: there is nothing to refresh, and the number
+ * is already connected under this very provider. Saying which provider turns a
+ * dead end into something the seller can act on.
+ */
+export function paymentAccountError(error: unknown, providerLabel: string): AppError {
+  const base = AppError.from(error);
+
+  if (isPostgrestError(error) && error.code === '23505') {
+    return new AppError(
+      `That ${providerLabel} number is already connected`,
+      `Remove the existing ${providerLabel} account first, or use a different receiving number.`,
+      { cause: error },
+    );
+  }
+
+  if (isPostgrestError(error) && /invalid_account_number/.test(error.message)) {
+    return new AppError(
+      'That receiving number is not valid',
+      'Enter the number using digits only, for example 01712345678.',
+      { cause: error },
+    );
+  }
+
+  return base;
 }

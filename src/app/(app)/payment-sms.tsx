@@ -10,7 +10,7 @@
  * **The permission is explained here, in plain words, before it is requested.** The
  * Android dialog says "allow SellFlow to receive SMS" and explains nothing. A
  * permission a seller does not understand is one they will refuse, and then
- * automatic detection silently never works. Consent is not bundled into sign-up,
+ * payment automation silently never works. Consent is not bundled into sign-up,
  * and is asked for only here, only on Android, only when this screen is opened.
  *
  * **Nothing here claims a payment succeeded.** Every status comes from
@@ -60,6 +60,7 @@ import {
   Text,
   TextArea,
   confirm,
+  useRefresh,
 } from '@/components/ui';
 import {
   providerIcon,
@@ -87,6 +88,9 @@ export default function PaymentSmsScreen() {
 
   const accounts = usePaymentAccounts(orgId);
   const detection = useSmsDetectionStatus(orgId);
+  // Destructured so the refresh callback depends on the functions themselves.
+  const { refetch: refetchAccounts } = accounts;
+  const { refresh: refreshDetection } = detection;
   const [asking, setAsking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyRef, setBusyRef] = useState<string | null>(null);
@@ -114,7 +118,7 @@ export default function PaymentSmsScreen() {
       await detection.refresh();
       setNotice(
         result === 'granted'
-          ? 'Permission granted. Automatic detection is on.'
+          ? 'Permission granted. Payment automation is on.'
           : 'No problem. Nothing else changes — you can record every payment by hand, exactly as before.',
       );
     } finally {
@@ -160,13 +164,25 @@ export default function PaymentSmsScreen() {
     }
   }
 
-  const rows = [...queued, ...failed];
+    const rows = [...queued, ...failed];
 
-  return (
-    <View style={{ flex: 1 }}>
-      <ScreenHeader title="Automatic detection" subtitle={organization?.name} />
+    /*
+     * Pull-to-refresh. This screen passed `onRefresh` with no `refreshing`, which
+     * defaults to `false` -- and a controlled `RefreshControl` stuck at `false`
+     * snaps straight back, so pulling did nothing visible at all. The seller
+     * could not tell whether the refresh had run or been ignored.
+     */
+    const refresh = useRefresh(
+      useCallback(async () => {
+        await Promise.all([refreshDetection(), refetchAccounts()]);
+      }, [refreshDetection, refetchAccounts]),
+    );
 
-      <Screen onRefresh={() => void detection.refresh()}>
+    return (
+      <View style={{ flex: 1 }}>
+        <ScreenHeader title="Payment automation" subtitle={organization?.name} />
+
+        <Screen onRefresh={refresh.onRefresh} refreshing={refresh.refreshing}>
         <View style={{ gap: spacing.xl, paddingTop: spacing.sm }}>
           {/* ------------------------------------------------------ Status */}
           <View>
@@ -176,7 +192,7 @@ export default function PaymentSmsScreen() {
 
               <View style={{ marginTop: spacing.md }}>
                 <DetailRow
-                  label="Device listener"
+                  label="This phone"
                   value={
                     detection.native === null
                       ? 'Not available'
@@ -264,10 +280,10 @@ export default function PaymentSmsScreen() {
               <Card>
                 <EmptyState
                   icon={Smartphone}
-                  title="No account connected"
-                  description="Automatic detection only recognises money arriving at a bKash, Nagad, Rocket or Upay number you have connected."
+                  title="No receiving account connected"
+                  description="Payment automation only recognises money arriving at a bKash, Nagad, Rocket or Upay number you have connected."
                   compact
-                  actionLabel="Connect an account"
+                  actionLabel="Connect a receiving account"
                   onActionPress={() => router.push('/(app)/payment-account/new')}
                 />
               </Card>
@@ -286,7 +302,7 @@ export default function PaymentSmsScreen() {
                         </RowIcon>
                       }
                       chevron={false}
-                      trailing="Listening"
+                      trailing="On"
                       trailingTone="success"
                       last={index === accounts.active.length - 1}
                     />

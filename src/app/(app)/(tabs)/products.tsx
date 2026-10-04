@@ -24,8 +24,10 @@ import {
   ListRowSkeleton,
   Screen,
   SearchBar,
+  SellflowRefreshControl,
   Text,
   confirm,
+  useRefresh,
 } from '@/components/ui';
 import { useProducts, type ProductWithStock } from '@/features/products/queries';
 import { useSession } from '@/store/session';
@@ -69,7 +71,20 @@ export default function ProductsScreen() {
   const currency = (organization?.currency ?? 'BDT') as CurrencyCode;
 
   const products = useProducts(store?.id);
+  // Destructured so the refresh callback depends on the function itself.
+  const { refetch } = products;
   const params = useLocalSearchParams<{ filter?: string }>();
+
+  /*
+   * Driven by the request, not by `isFetching`. The list also refetches on focus,
+   * and tying the indicator to that made it flash on every tab switch; this way
+   * the spinner appears only when the seller actually pulled.
+   */
+  const refresh = useRefresh(
+    useCallback(async () => {
+      await refetch();
+    }, [refetch]),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -97,12 +112,10 @@ export default function ProductsScreen() {
         }
       />
 
-      <Screen
-        scroll={false}
-        onRefresh={() => void products.refetch()}
-        refreshing={products.isFetching && !products.isLoading}
-        contentStyle={{ flex: 1, paddingHorizontal: 0, paddingBottom: 0 }}
-      >
+        <Screen
+          scroll={false}
+          contentStyle={{ flex: 1, paddingHorizontal: 0, paddingBottom: 0 }}
+        >
         <View style={{ paddingHorizontal: spacing.lg, gap: spacing.sm, paddingTop: spacing.sm }}>
           <SearchBar
             value={products.search}
@@ -133,10 +146,18 @@ export default function ProductsScreen() {
             paddingBottom: insets.bottom + 24,
             flexGrow: 1,
           }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          onEndReached={products.loadMore}
-          onEndReachedThreshold={0.5}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            onEndReached={products.loadMore}
+            onEndReachedThreshold={0.5}
+            /*
+             * The refresh lives on the list, not on `Screen`. This screen is
+             * `scroll={false}` because the search bar and the list are siblings,
+             * so `Screen` owns no scrollable to attach a RefreshControl to -- the
+             * props used to be passed to it anyway and quietly dropped, which is
+             * why this tab was the one place in the app with no pull-to-refresh.
+             */
+            refreshControl={<SellflowRefreshControl {...refresh} />}
           renderItem={({ item }) => (
             <ProductCard
         product={item}

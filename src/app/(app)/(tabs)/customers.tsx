@@ -21,8 +21,10 @@ import {
   FilterChip,
   ListRow,
   ListRowSkeleton,
-  confirm,
   SearchBar,
+  SellflowRefreshControl,
+  confirm,
+  useRefresh,
 } from '@/components/ui';
 import { useCustomers, useDeleteCustomer } from '@/features/customers/queries';
 import { AppError } from '@/lib/errors';
@@ -65,6 +67,19 @@ export default function CustomersScreen() {
   };
 
   const customers = useCustomers(organization?.id);
+  // Destructured so the refresh callback depends on the function itself.
+  const { refetch } = customers;
+
+  /*
+   * Tied to the seller's gesture rather than to `isFetching`, which also rises
+   * for the refetch-on-focus below. Deriving the indicator from that made it
+   * flash on every tab switch, which reads as the list reloading unbidden.
+   */
+  const refresh = useRefresh(
+    useCallback(async () => {
+      await refetch();
+    }, [refetch]),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -102,8 +117,7 @@ export default function CustomersScreen() {
         }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        onRefresh={() => void customers.refetch()}
-        refreshing={customers.isFetching && !customers.isLoading}
+          refreshControl={<SellflowRefreshControl {...refresh} />}
         onEndReached={customers.loadMore}
         onEndReachedThreshold={0.5}
         ListHeaderComponent={

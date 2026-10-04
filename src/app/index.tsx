@@ -48,7 +48,7 @@ export default function Index() {
   }
 
   if (status === 'needs-onboarding') {
-    return <Redirect href="/onboarding" />;
+    return <Redirect href="/register" />;
   }
 
   return <Redirect href="/(app)" />;

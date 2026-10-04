@@ -24,6 +24,11 @@ const STUBS = {
   'expo-network': 'scripts/__stubs__/expo-network.mjs',
   '@react-native-async-storage/async-storage': 'scripts/__stubs__/async-storage.mjs',
   '@supabase/supabase-js': 'scripts/__stubs__/supabase-js.mjs',
+  // The passcode record lives in the platform keystore, which has no Node build.
+  'expo-secure-store': 'scripts/__stubs__/expo-secure-store.mjs',
+  // Same reason: native module, and it drags in a TS-only dependency graph. The
+  // stub delegates to Node's own SHA-512, so the algorithm is unchanged.
+  'expo-crypto': 'scripts/__stubs__/expo-crypto.mjs',
   // Flow-typed and unparseable by Node. Scripts that evaluate the real design
   // tokens need a stand-in for `Platform`.
   'react-native': 'scripts/__stubs__/react-native.mjs',

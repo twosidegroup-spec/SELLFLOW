@@ -1,20 +1,26 @@
 /**
  * Account settings.
  *
- * Profile, password change, and sign out. The session is managed by Supabase:
- * changing the password uses `updateUser`, which re-validates the current
- * session rather than creating a second one.
+ * Profile, passcode, password change, and sign out.
+ *
+ * The passcode section was missing entirely until now, which left the lock with no
+ * exit: the only way it had ever been removed was five wrong guesses, which
+ * deletes the record and locks the seller out until they sign in again. Setting,
+ * changing and removing it all belong here, next to the account password it is
+ * easy to confuse it with.
  */
 
 import { useEffect, useState } from 'react';
 import { Keyboard, View } from 'react-native';
-import { KeyRound, LogOut, Save, User } from 'lucide-react-native';
+import { router } from 'expo-router';
+import { KeyRound, LogOut, Save, ShieldCheck, User } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { Button, Card, Input, Screen, SectionHeader, Text, confirm } from '@/components/ui';
+import { Button, Card, Input, Screen, SectionHeader, Text, confirm, confirmDestructive } from '@/components/ui';
 import { AppError } from '@/lib/errors';
 import { getSupabase } from '@/lib/supabase';
+import { useLock } from '@/store/lock';
 import { useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -25,6 +31,10 @@ export default function AccountSettingsScreen() {
   const user = useSession((state) => state.user);
   const signOut = useSession((state) => state.signOut);
   const refreshWorkspace = useSession((state) => state.refreshWorkspace);
+
+  const hasPasscode = useLock((state) => state.hasPasscode);
+  const passcodeLength = useLock((state) => state.length);
+  const clearPasscode = useLock((state) => state.clearPasscode);
 
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -252,6 +262,53 @@ export default function AccountSettingsScreen() {
                 block
                 style={{ marginTop: spacing.md }}
               />
+            </Card>
+          </View>
+
+          <View>
+            <SectionHeader title="Passcode" />
+            <Card>
+              <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
+                <Text variant="caption">
+                  {hasPasscode
+                    ? `Your passcode is ${passcodeLength ? `${passcodeLength} digits` : 'set'} on this phone.`
+                    : 'No passcode is set on this phone.'}
+                </Text>
+                <Text variant="micro" tone="muted">
+                  {hasPasscode
+                    ? 'It unlocks SellFlow when you open the app. It is stored only in this phone’s secure keystore and is not sent to SellFlow, so it cannot be recovered or moved to another phone.'
+                    : 'A passcode stops anyone with your phone from seeing your orders, customers and takings. It is separate from your account password.'}
+                </Text>
+              </View>
+
+              <View style={{ gap: spacing.sm }}>
+                <Button
+                  label={hasPasscode ? 'Change passcode' : 'Set a passcode'}
+                  icon={ShieldCheck}
+                  onPress={() => router.push('/set-passcode')}
+                  block
+                />
+
+                {hasPasscode ? (
+                  <Button
+                    label="Remove passcode"
+                    variant="ghost"
+                    onPress={async () => {
+                      const confirmed = await confirmDestructive({
+                        title: 'Remove your passcode?',
+                        message:
+                          'SellFlow will open without asking for anything on this phone. Your account password still protects the account itself.',
+                        confirmLabel: 'Remove',
+                      });
+                      if (confirmed && user) {
+                        await clearPasscode(user.id);
+                        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      }
+                    }}
+                    block
+                  />
+                ) : null}
+              </View>
             </Card>
           </View>
 

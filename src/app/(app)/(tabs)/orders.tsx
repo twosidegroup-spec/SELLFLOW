@@ -26,7 +26,9 @@ import {
   OrderStatusBadge,
   PaymentStatusBadge,
   SearchBar,
+  SellflowRefreshControl,
   Text,
+  useRefresh,
 } from '@/components/ui';
 import { useOrders, type OrderFilter, type OrderListItem } from '@/features/orders/queries';
 import { useSession } from '@/store/session';
@@ -61,6 +63,17 @@ export default function OrdersScreen() {
   const params = useLocalSearchParams<{ filter?: string }>();
   const orders = useOrders(store?.id);
   const { setFilter, filter, refetch } = orders;
+
+  /*
+   * Tied to the seller's gesture rather than to `isFetching`, which also rises
+   * for the refetch-on-focus below. Deriving the indicator from that made it
+   * flash on every tab switch, which reads as the list reloading unbidden.
+   */
+  const refresh = useRefresh(
+    useCallback(async () => {
+      await refetch();
+    }, [refetch]),
+  );
 
   // Deep link from the dashboard, e.g. /orders?filter=pending
   const initialFilter = useMemo<OrderFilter>(() => {
@@ -109,8 +122,7 @@ export default function OrdersScreen() {
         }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        onRefresh={() => void orders.refetch()}
-        refreshing={orders.isFetching && !orders.isLoading}
+          refreshControl={<SellflowRefreshControl {...refresh} />}
         onEndReached={orders.loadMore}
         onEndReachedThreshold={0.5}
         ListHeaderComponent={

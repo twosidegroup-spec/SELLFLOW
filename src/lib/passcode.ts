@@ -30,10 +30,34 @@ const KEY_PREFIX = 'sellflow.passcode.';
 const DIGEST = Crypto.CryptoDigestAlgorithm.SHA512;
 const MAX_ATTEMPTS = 5;
 
+/**
+ * The two lengths a seller can choose.
+ *
+ * A passcode length has to be *known*, not guessed. The unlock screen used to
+ * auto-submit as soon as 4 digits were in, which made a 6, 7 or 8 digit passcode
+ * literally impossible to enter: the first four digits were submitted, the rest
+ * were swallowed by the in-flight hash, and each attempt burned one of only five
+ * lives -- so five tries deleted the passcode and locked the seller out of their
+ * own business. The length is now persisted alongside the hash and the keypad
+ * waits for exactly that many digits.
+ */
+export const PASSCODE_LENGTHS = [4, 6] as const;
+export type PasscodeLength = (typeof PASSCODE_LENGTHS)[number];
+export const DEFAULT_PASSCODE_LENGTH: PasscodeLength = 4;
+
 export interface PasscodeRecord {
-  version: 1;
+  version: 2;
   salt: string;
   hash: string;
+  /**
+   * How many digits this passcode has. Present from version 2.
+   *
+   * Records written before this existed have no length. That is not an error to
+   * paper over: see {@link readPasscodeLength}, which reports `null` for them and
+   * makes the unlock screen fall back to an explicit Continue key rather than
+   * guessing a length that would truncate the entry again.
+   */
+  length?: number;
   updatedAt: string;
 }
 
@@ -70,11 +94,29 @@ export interface PasscodeCheck {
   message: string;
 }
 
-/** Validates the shape rules the UI enforces, so the rule lives in one place. */
-export function validatePasscode(passcode: string): { ok: boolean; message: string } {
-  if (passcode.length < 4) return { ok: false, message: 'Use at least 4 digits.' };
-  if (passcode.length > 8) return { ok: false, message: 'Use at most 8 digits.' };
+/** Whether a length is one a seller is allowed to pick. */
+export function isPasscodeLength(value: number): value is PasscodeLength {
+  return (PASSCODE_LENGTHS as readonly number[]).includes(value);
+}
+
+/**
+ * Validates the shape rules the UI enforces, so the rule lives in one place.
+ *
+ * `lengths` defaults to accepting any 4-8 digit value, which is what records
+ * written before the choice existed used. The registration and setup screens pass
+ * `PASSCODE_LENGTHS` so only 4 or 6 can be chosen.
+ */
+export function validatePasscode(
+  passcode: string,
+  lengths: readonly number[] = [4, 5, 6, 7, 8],
+): { ok: boolean; message: string } {
   if (!/^\d+$/.test(passcode)) return { ok: false, message: 'Digits only.' };
+
+  if (!lengths.includes(passcode.length)) {
+    const wanted = lengths.length === 1 ? `${lengths[0]} digits` : `${lengths.join(' or ')} digits`;
+    return { ok: false, message: `Use exactly ${wanted}.` };
+  }
+
   if (/^(\d)\1+$/.test(passcode)) {
     return { ok: false, message: 'Do not repeat one digit.' };
   }
@@ -109,13 +151,21 @@ export async function hasPasscode(userId: string | undefined): Promise<boolean> 
   }
 }
 
-export async function setPasscode(userId: string, passcode: string): Promise<void> {
+export async function setPasscode(
+  userId: string,
+  passcode: string,
+  lengths: readonly number[] = PASSCODE_LENGTHS,
+): Promise<void> {
+  const check = validatePasscode(passcode, lengths);
+  if (!check.ok) throw new Error(check.message);
+
   const salt = toHex(await Crypto.getRandomBytesAsync(16));
   const hash = await derive(passcode, salt);
   const record: PasscodeRecord = {
-    version: 1,
+    version: 2,
     salt,
     hash,
+    length: passcode.length,
     updatedAt: new Date().toISOString(),
   };
   await SecureStore.setItemAsync(secureKey(userId), JSON.stringify(record), {
@@ -124,6 +174,27 @@ export async function setPasscode(userId: string, passcode: string): Promise<voi
   await SecureStore.setItemAsync(`${secureKey(userId)}.failed`, '0', {
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
   });
+}
+
+/**
+ * How many digits this account's passcode has.
+ *
+ * Returns `null` when there is no passcode, and also when the stored record
+ * predates the length field. The second case is the interesting one: rather than
+ * assuming 4, callers get `null` and are expected to ask the seller to press
+ * Continue. Assuming 4 is exactly the bug this field was added to remove, so the
+ * ambiguity is surfaced instead of resolved by guesswork.
+ */
+export async function readPasscodeLength(userId: string | undefined): Promise<number | null> {
+  if (!userId) return null;
+  try {
+    const raw = await SecureStore.getItemAsync(secureKey(userId));
+    if (!raw) return null;
+    const record = JSON.parse(raw) as PasscodeRecord;
+    return typeof record.length === 'number' && record.length > 0 ? record.length : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function clearPasscode(userId: string): Promise<void> {

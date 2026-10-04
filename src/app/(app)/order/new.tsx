@@ -75,16 +75,7 @@ import {
   validateDraft,
   type DraftLine,
 } from '@/features/orders/calculations';
-
-const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'bkash', label: 'bKash' },
-  { value: 'nagad', label: 'Nagad' },
-  { value: 'rocket', label: 'Rocket' },
-  { value: 'card', label: 'Card' },
-  { value: 'bank', label: 'Bank transfer' },
-  { value: 'other', label: 'Other' },
-];
+import { PAYMENT_METHODS } from '@/features/payments/methods';
 
 export default function NewOrderScreen() {
   const { colors, spacing } = useTheme();
@@ -469,7 +460,7 @@ export default function NewOrderScreen() {
           <Card>
             <View style={{ gap: spacing.md }}>
               <SelectField
-                label="Method"
+                label="Payment method"
                 value={PAYMENT_METHODS.find((m) => m.value === paymentMethod)?.label}
                 onPress={() => setMethodSheetOpen(true)}
               />

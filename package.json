@@ -53,6 +53,12 @@
   },
   "scripts": {
     "start": "expo start --dev-client",
+    "web:serve": "node website/serve.mjs 8099",
+    "web:build": "node website/build.mjs",
+    "dashboard:build": "node website/build-dashboard.mjs",
+    "web:build:all": "node website/build.mjs && node website/build-dashboard.mjs",
+    "web:review": "node website/review.mjs",
+    "web:verify": "node website/verify-release.mjs",
     "dev:web": "expo start --web",
     "dev:web:phone": "expo start --web --port 8081",
     "android": "expo run:android",
@@ -80,11 +86,14 @@
     "test:sms-adapter": "node --import ./scripts/register-loader.mjs --test scripts/sms-adapter.test.mjs",
     "test:payment-boundary": "node --test scripts/payment-boundary.test.mjs",
     "test:auto-push": "node --test --test-timeout=120000 scripts/auto-push.test.mjs",
-    "test": "npm run typecheck && npm run lint && npm run test:connectivity && npm run test:outbox && npm run test:errors && npm run test:money && npm run test:money-format && npm run test:finance-wording && npm run test:order-form && npm run test:payment-normalize && npm run test:sms-adapter && npm run test:payment-boundary && npm run test:auto-push && npm run design:audit && npm run design:visual && npm run db:test",
+    "test": "npm run typecheck && npm run lint && npm run test:connectivity && npm run test:outbox && npm run test:errors && npm run test:money && npm run test:money-format && npm run test:finance-wording && npm run test:order-form && npm run test:payment-normalize && npm run test:sms-adapter && npm run test:registration && npm run test:splash-assets && npm run test:payment-boundary && npm run test:auto-push && npm run design:audit && npm run design:visual && npm run db:test",
     "db:verify:hosted": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-hosted.ps1",
     "push:now": "node scripts/auto-push.mjs --now",
     "push:wait": "node scripts/auto-push.mjs --wait",
     "push:status": "node scripts/auto-push.mjs --status",
-    "auth:verify": "node scripts/verify-auth.mjs"
-  },  "private": true
+    "auth:verify": "node scripts/verify-auth.mjs",
+    "test:registration": "node --import ./scripts/register-loader.mjs --test scripts/registration.test.mjs",
+    "test:splash-assets": "node --import ./scripts/register-loader.mjs --test scripts/splash-assets.test.mjs"
+  },
+  "private": true
 }

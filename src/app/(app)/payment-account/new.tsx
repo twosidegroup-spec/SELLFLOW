@@ -108,10 +108,10 @@ export default function NewPaymentAccountScreen() {
 
   if (!canWrite) {
     return (
-      <FormScreen title="Connect an account" footer={<Button label="Close" onPress={() => router.back()} block size="lg" />}>
+      <FormScreen title="Connect a receiving account" footer={<Button label="Close" onPress={() => router.back()} block size="lg" />}>
         <Card>
           <Text variant="caption" tone="muted">
-            Only the owner or a manager can connect a payment account.
+            Only the owner or a manager can connect a receiving account.
           </Text>
         </Card>
       </FormScreen>
@@ -120,11 +120,11 @@ export default function NewPaymentAccountScreen() {
 
   return (
     <FormScreen
-      title="Connect an account"
+      title="Connect a receiving account"
       subtitle="The number your customers pay into"
       footer={
         <Button
-          label="Connect account"
+          label="Connect receiving account"
           onPress={() => void handleSave()}
           loading={createAccount.isPending}
           disabled={!canSave}
@@ -201,7 +201,7 @@ export default function NewPaymentAccountScreen() {
             />
 
             <Input
-              label="Account number"
+              label="Receiving number"
               required
               numeric
               value={number}
@@ -242,8 +242,8 @@ export default function NewPaymentAccountScreen() {
               label="Label"
               value={label}
               onChangeText={setLabel}
-              placeholder="Main shop"
-              hint="Optional. Helps when you collect through more than one number."
+              placeholder="Main counter"
+              hint="Optional. Helps when you take payment through more than one number."
               editable={!createAccount.isPending}
             />
           </View>

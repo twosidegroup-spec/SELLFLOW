@@ -14,7 +14,7 @@
  */
 
 import { useCallback } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -28,6 +28,7 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 
 import { IconButton, ScreenHeader } from '@/components/ScreenHeader';
 import {
@@ -39,7 +40,10 @@ import {
   ListRowSkeleton,
   RowIcon,
   SectionHeader,
+  SellflowRefreshControl,
   Text,
+  confirm,
+  useRefresh,
 } from '@/components/ui';
 import {
   providerIcon,
@@ -47,6 +51,7 @@ import {
   usePaymentAccounts,
   usePaymentReview,
 } from '@/features/payments/queries';
+import { useSetPaymentAccountStatus } from '@/features/payments/mutations';
 import { useSmsDetectionStatus } from '@/features/payments/sms/hooks';
 import { detectionCopy } from '@/features/payments/sms/status';
 import { useSession } from '@/store/session';
@@ -65,6 +70,10 @@ export default function PaymentsScreen() {
   const orgId = organization?.id;
   const accounts = usePaymentAccounts(orgId);
   const review = usePaymentReview(orgId);
+  // Destructured so the refresh callback depends on the functions themselves.
+  const { refetch: refetchAccounts } = accounts;
+  const { refetch: refetchReview } = review;
+  const setStatus = useSetPaymentAccountStatus(orgId);
   const detection = useSmsDetectionStatus(orgId);
 
   // Only the tone is derived here; the wording lives with the status itself so the
@@ -84,8 +93,25 @@ export default function PaymentsScreen() {
     }, [orgId]),
   );
 
-  const isLoading = accounts.isLoading && review.isLoading;
-  const isError = accounts.isError && review.isError;
+    const isLoading = accounts.isLoading && review.isLoading;
+    const isError = accounts.isError && review.isError;
+
+    /*
+     * Pull-to-refresh, driven by the request rather than by a query flag.
+     *
+     * This screen used to combine the two queries with
+     * `refreshing={(accounts.isFetching || review.isFetching) && !isLoading}`,
+     * where `isLoading` was itself an `&&`. The moment the first of the two
+     * resolved, `isLoading` was false while `isFetching` was true, so the
+     * indicator animated unprompted on every cold mount -- and again on every
+     * navigation, because the focus effect above refetches. `useRefresh` ties the
+     * spinner to the seller's own gesture and clears it in a `finally`.
+     */
+    const refresh = useRefresh(
+      useCallback(async () => {
+        await Promise.all([refetchAccounts(), refetchReview()]);
+      }, [refetchAccounts, refetchReview]),
+    );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -96,7 +122,7 @@ export default function PaymentsScreen() {
           canWrite ? (
             <IconButton
               onPress={() => router.push('/(app)/payment-account/new')}
-              label="Connect a payment account"
+              label="Connect a receiving account"
               tone="primary"
             >
               <Plus size={20} color={colors.primary} strokeWidth={2.25} />
@@ -105,25 +131,18 @@ export default function PaymentsScreen() {
         }
       />
 
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: spacing.lg,
-          paddingTop: spacing.sm,
-          paddingBottom: insets.bottom + spacing.xxl,
-          gap: spacing.lg,
-        }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={(accounts.isFetching || review.isFetching) && !isLoading}
-            onRefresh={() => {
-              void accounts.refetch();
-              void review.refetch();
-            }}
-            tintColor={colors.textMuted}
-          />
-        }
-      >
+        <ScrollView
+          contentContainerStyle={{
+            paddingHorizontal: spacing.lg,
+            paddingTop: spacing.sm,
+            paddingBottom: insets.bottom + spacing.xxl,
+            gap: spacing.lg,
+          }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          refreshControl={<SellflowRefreshControl {...refresh} />}
+        >
         {isError ? (
           <ErrorState
             title={AppError.from(accounts.error ?? review.error).title}
@@ -185,7 +204,7 @@ export default function PaymentsScreen() {
           most likely to want to know whether anything is watching it yet. */}
         <View>
           <SectionHeader
-            title="Automatic detection"
+            title="Payment automation"
             actionLabel="Set up"
             onActionPress={() => router.push('/(app)/payment-sms')}
           />
@@ -235,12 +254,12 @@ export default function PaymentsScreen() {
             <Card>
               <EmptyState
                 icon={Smartphone}
-                title="No payment account connected"
-                description="Connect the bKash, Nagad, Rocket or Upay number your customers pay into. Then an order can wait for the money."
+                title="No receiving account connected"
+                description="Connect the bKash, Nagad, Rocket or Upay receiving number your customers pay into. Then an order can wait for the money."
                 compact
                 {...(canWrite
                   ? {
-                      actionLabel: 'Connect an account',
+                      actionLabel: 'Connect a receiving account',
                       onActionPress: () => router.push('/(app)/payment-account/new'),
                     }
                   : {})}
@@ -248,9 +267,22 @@ export default function PaymentsScreen() {
             </Card>
           ) : (
             <Card style={{ paddingVertical: 0 }}>
+              {/*
+                Management, not onboarding. Registration already created these, so
+                this screen is where they are viewed and switched -- tapping one
+                stops payments being matched against it without deleting it.
+              */}
+              {canWrite && accounts.accounts.length > 0 ? (
+                <View style={{ paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: 0 }}>
+                  <Text variant="micro" tone="muted">
+                    Tap an account to switch it off or on.
+                  </Text>
+                </View>
+              ) : null}
               {accounts.accounts.map((account, index) => {
                 const Icon = providerIcon(account.provider);
                 const active = account.is_active && account.status === 'connected';
+                const pending = setStatus.isPending && setStatus.variables?.accountId === account.id;
 
                 return (
                   <ListRow
@@ -266,9 +298,54 @@ export default function PaymentsScreen() {
                       </RowIcon>
                     }
                     chevron={false}
-                    trailing={active ? 'Active' : account.is_active ? account.status : 'Off'}
+                    trailing={pending ? 'Saving…' : active ? 'Active' : account.is_active ? account.status : 'Off'}
                     trailingTone={active ? 'success' : 'muted'}
                     last={index === accounts.accounts.length - 1}
+                    /*
+                     * Tapping a connected account switches it off; tapping a
+                     * disabled one brings it back. This is the
+                     * `set_payment_account_status` RPC, which re-checks that the
+                     * caller may write to the organisation -- so the button is a
+                     * convenience, not the authorisation.
+                     *
+                     * It was previously exported and never called, which meant a
+                     * seller who connected the wrong number had no way to stop
+                     * payments being matched against it except deleting the row.
+                     */
+                    onPress={
+                      canWrite
+                        ? async () => {
+                            const confirmed = await confirm(
+                              active
+                                ? {
+                                    title: `Stop using this ${providerLabel(account.provider)} number?`,
+                                    message:
+                                      'Payments arriving here will no longer be matched to your orders. The account stays connected, so you can switch it back on at any time.',
+                                    confirmLabel: 'Switch off',
+                                  }
+                                : {
+                                    title: `Use this ${providerLabel(account.provider)} number again?`,
+                                    message:
+                                      'Payments arriving at this number will be matched to your orders again.',
+                                    confirmLabel: 'Switch on',
+                                  },
+                            );
+                            if (!confirmed) return;
+                            try {
+                              await setStatus.mutateAsync({
+                                accountId: account.id,
+                                status: 'connected',
+                                isActive: !active,
+                              });
+                              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            } catch {
+                              // The error is on the mutation's own state; the
+                              // trailing label reverts when the list refetches.
+                              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                            }
+                          }
+                        : undefined
+                    }
                   />
                 );
               })}

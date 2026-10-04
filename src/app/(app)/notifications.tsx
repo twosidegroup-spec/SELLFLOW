@@ -21,7 +21,9 @@ import {
   EmptyState,
   ErrorState,
   ListRowSkeleton,
+  SellflowRefreshControl,
   Text,
+  useRefresh,
 } from '@/components/ui';
 import type { NotificationKind, NotificationRow } from '@/lib/database.types';
 import { AppError } from '@/lib/errors';
@@ -80,6 +82,18 @@ export default function NotificationsScreen() {
 
   const notifications = query.data ?? [];
   const hasUnread = notifications.some((entry) => entry.read_at === null);
+  // Destructured so the refresh callback depends on the function itself.
+  const { refetch } = query;
+
+  /*
+   * Tied to the seller's gesture rather than to `isFetching`, which also rises
+   * for the refetch-on-focus above.
+   */
+  const refresh = useRefresh(
+    useCallback(async () => {
+      await refetch();
+    }, [refetch]),
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -109,6 +123,7 @@ export default function NotificationsScreen() {
           flexGrow: 1,
         }}
         showsVerticalScrollIndicator={false}
+        refreshControl={<SellflowRefreshControl {...refresh} />}
         renderItem={({ item }) => <NotificationCard notification={item} />}
         ListEmptyComponent={
           query.isLoading ? (

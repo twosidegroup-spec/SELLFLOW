@@ -98,7 +98,13 @@ export default function RootLayout() {
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="(auth)" />
-              <Stack.Screen name="onboarding" />
+              {/*
+                The single registration flow. Outside the (auth) group on purpose:
+                it has to keep rendering across the moment signUp succeeds and the
+                session flips to "signed in, no business yet", which the (auth)
+                guard would otherwise treat as a reason to leave.
+              */}
+              <Stack.Screen name="register" />
               {/* Passcode gate and setup. Both need a valid session; the app
                   layout redirects to /passcode when a passcode is locked. */}
               <Stack.Screen name="passcode" />

@@ -50,6 +50,7 @@ import {
   Screen,
   Skeleton,
   Text,
+  useRefresh,
 } from '@/components/ui';
 import { useDashboard, type DashboardData } from '@/features/dashboard/queries';
 import { AppError } from '@/lib/errors';
@@ -65,6 +66,19 @@ export default function HomeScreen() {
   const currency = (organization?.currency ?? 'BDT') as CurrencyCode;
 
   const dashboard = useDashboard(store?.id);
+  // Destructured so the refresh callback depends on the function itself.
+  const { refetch } = dashboard;
+
+  /*
+   * Tied to the seller's gesture rather than to `isRefetching`, which also rises
+   * for the refetch-on-focus below. Deriving the indicator from that made the
+   * spinner flash on every tab switch, which reads as the app reloading itself.
+   */
+  const refresh = useRefresh(
+    useCallback(async () => {
+      await refetch();
+    }, [refetch]),
+  );
 
   // The dashboard is a snapshot the seller acts on, so it must be current on
   // every return rather than when it happened to be fetched.
@@ -102,8 +116,8 @@ export default function HomeScreen() {
       <Screen
         scroll
         grow
-        onRefresh={() => void dashboard.refetch()}
-        refreshing={dashboard.isRefetching && !dashboard.isLoading}
+          onRefresh={refresh.onRefresh}
+          refreshing={refresh.refreshing}
       >
 
         {dashboard.isLoading ? (

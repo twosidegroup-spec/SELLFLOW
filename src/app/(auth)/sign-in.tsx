@@ -175,12 +175,22 @@ export default function SignInScreen() {
             <Text
               variant="caption"
               tone="primary"
-              onPress={() => router.push('/sign-up')}
+              onPress={() => router.push('/register')}
               suppressHighlighting
               accessibilityRole="link"
             >
               Create an account
             </Text>
+          </Text>
+          {/*
+            Stated here because this is the screen a seller lands on when their
+            session has gone. The passcode that normally opens the app lives only
+            in this device's keystore, so a new phone means signing in properly
+            once before the passcode can be used again.
+          */}
+          <Text variant="micro" tone="muted" style={{ textAlign: 'center', marginTop: spacing.sm }}>
+            Signing in on a new phone? Use your account password. Your passcode stays on
+            the phone where you set it.
           </Text>
         </View>
       </View>

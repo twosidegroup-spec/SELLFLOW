@@ -83,18 +83,9 @@ import {
   toMinor,
   type CurrencyCode,
 } from '@/lib/money';
+import { PAYMENT_METHODS } from '@/features/payments/methods';
 import { useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
-
-const METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'bkash', label: 'bKash' },
-  { value: 'nagad', label: 'Nagad' },
-  { value: 'rocket', label: 'Rocket' },
-  { value: 'card', label: 'Card' },
-  { value: 'bank', label: 'Bank transfer' },
-  { value: 'other', label: 'Other' },
-];
 
 export default function OrderDetailScreen() {
   const { colors, spacing } = useTheme();
@@ -446,7 +437,7 @@ export default function OrderDetailScreen() {
                   {payments.data.map((payment) => (
                     <DetailRow
                       key={payment.id}
-                      label={`${payment.is_refund ? 'Refund' : 'Payment'} · ${METHODS.find((m) => m.value === payment.method)?.label ?? payment.method}`}
+                      label={`${payment.is_refund ? 'Refund' : 'Payment'} · ${PAYMENT_METHODS.find((m) => m.value === payment.method)?.label ?? payment.method}`}
                       sublabel={formatDateTime(payment.paid_at)}
                       amount={formatMoney(
                         payment.is_refund ? -money(payment.amount, currency) : money(payment.amount, currency),
@@ -751,8 +742,8 @@ function PaymentSheet({
         />
 
         <SelectField
-          label="Method"
-          value={METHODS.find((m) => m.value === method)?.label}
+          label="Payment method"
+          value={PAYMENT_METHODS.find((m) => m.value === method)?.label}
           onPress={() => setMethodOpen(true)}
           icon={Banknote}
         />
@@ -775,19 +766,19 @@ function PaymentSheet({
 
       <BottomSheet visible={methodOpen} onClose={() => setMethodOpen(false)} title="Method">
         <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-          {METHODS.map((option, index) => (
+          {PAYMENT_METHODS.map((option, index) => (
             <View key={option.value}>
               <ListRow
                 title={option.label}
                 selected={option.value === method}
                 chevron={false}
-                last={index === METHODS.length - 1}
+                last={index === PAYMENT_METHODS.length - 1}
                 onPress={() => {
                   setMethod(option.value);
                   setMethodOpen(false);
                 }}
               />
-              {index < METHODS.length - 1 ? <Divider /> : null}
+              {index < PAYMENT_METHODS.length - 1 ? <Divider /> : null}
             </View>
           ))}
         </View>

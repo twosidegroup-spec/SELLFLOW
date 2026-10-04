@@ -104,14 +104,14 @@ export function SearchBar({
 // SegmentedControl
 // ---------------------------------------------------------------------------
 
-export interface SegmentOption<T extends string> {
+export interface SegmentOption<T extends string | number> {
   value: T;
   label: string;
   /** Optional trailing count, e.g. the number of orders in a filter. */
   count?: number;
 }
 
-export function SegmentedControl<T extends string>({
+export function SegmentedControl<T extends string | number>({
   options,
   value,
   onChange,
