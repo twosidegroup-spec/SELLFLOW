@@ -27,7 +27,20 @@ export const appConfig = {
   /** Shown under the product name, the way a store lists the publisher. */
   developer: 'SellFlow',
 
-  version: '1.0.0',
+  version: '1.1.1',
+  /**
+   * The APK's `versionCode`, read with aapt from the artifact rather than assumed.
+   *
+   * It was previously shown as 2 while every shipped APK was versionCode 1 -- a
+   * number no build had ever had, which made the download page describe something
+   * that did not exist. It is now 2 because app.json pins `android.versionCode: 2`
+   * and EAS build 653f255e was verified to carry it.
+   *
+   * The pin exists because `eas.json` uses `appVersionSource: "local"`, which
+   * derives the code from the version string, and that derivation is not something
+   * to rely on for a value Android compares when deciding whether to allow an
+   * upgrade.
+   */
   buildNumber: '2',
   releaseDate: '2026-10-04',
   releaseDateLabel: '4 October 2026',
@@ -40,8 +53,23 @@ export const appConfig = {
    * Where the APK is served from.
    *
    * External by design: a Vercel Hobby deployment caps static uploads at
-   * 100 MB and the universal APK is 110.1 MB, so the binary lives on a GitHub
-   * release and this page links to it directly.
+   * 100 MB and the universal APK is 110.49 MB, so the binary lives on a GitHub
+   * release and this page links to it directly. `build.mjs` additionally refuses to
+   * copy `public/downloads/` into the deployment whenever this is an external URL,
+   * so there is no path by which a 110 MB binary reaches Vercel.
+   *
+   * A new release tag per build, never a replaced asset on an existing tag. Two
+   * reasons, both practical rather than aesthetic:
+   *
+   *   - Replacing the asset would keep the download URL byte-identical, so caches
+   *     and browsers that already fetched it would keep handing out the OLD apk.
+   *   - `sellflow-1.1.0.apk` would then be a filename that no longer described the
+   *     file behind it, which is how "I downloaded 1.1.0 yesterday and it is a
+   *     different app today" happens.
+   *
+   * The version numbers a user cares about are the app's, not the tag's: the app
+   * is 1.0.0 build 1 whichever release it came from. The tag only has to sort
+   * upward so the newest release is the default one.
    *
    * To self-host instead, point this at a path and drop the file in
    * public/downloads/ -- the build copies it into the deployment and validates
@@ -49,9 +77,10 @@ export const appConfig = {
    *
    *   apkPath: 'downloads/sellflow-latest.apk',
    */
-  apkPath: 'https://github.com/twosidegroup-spec/SELLFLOW/releases/download/v1.1.0/sellflow-1.1.0.apk',
-  apkFileName: 'sellflow-1.1.0.apk',
-  apkSizeBytes: 112_925 * 1024,
+  apkPath: 'https://github.com/twosidegroup-spec/SELLFLOW/releases/download/v1.1.1/sellflow-1.1.1.apk',
+  apkFileName: 'sellflow-1.1.1.apk',
+  /** Exact size of EAS build 653f255e, in bytes. Not rounded. */
+  apkSizeBytes: 115_863_383,
   minAndroidVersion: 'Android 8.0 (API 26) or newer',
   abi: 'arm64-v8a, armeabi-v7a, x86_64',
 
@@ -604,9 +633,18 @@ export const dataSafety = {
 export const appInfo = {
   title: 'App info',
   rows: [
-    { label: 'Version', value: '1.0.0 (build 2)' },
-    { label: 'Updated', value: '4 Oct 2026' },
-    { label: 'Size', value: '~110 MB' },
+    /*
+     * Derived from `appConfig` rather than typed out.
+     *
+     * These three were hard-coded strings, which is how the page ended up claiming
+     * "build 2" while every shipped APK has been versionCode 1: one copy of the
+     * fact lived in two places and only one of them was ever checked against an
+     * artifact. Reading them from the same object the download button uses means a
+     * future release cannot be misdescribed without editing the version itself.
+     */
+    { label: 'Version', value: `${appConfig.version} (build ${appConfig.buildNumber})` },
+    { label: 'Updated', value: appConfig.releaseDateShort },
+    { label: 'Size', value: `${(appConfig.apkSizeBytes / 1024 / 1024).toFixed(1)} MB` },
     { label: 'Requires', value: 'Android 8.0+' },
     { label: 'Category', value: 'Business' },
     { label: 'Delivery', value: 'Direct APK' },
