@@ -235,18 +235,35 @@ crops the left and right off every screenshot in the rail.
 
 ```bash
 node build.mjs
+node build-dashboard.mjs   # only needed when the Expo app changed
 cd dist && vercel deploy --prod
 ```
 
-Two things that will silently break the site if they are changed, both learned
+**Pushing to `main` does not deploy anything.** The Vercel project is deliberately
+not connected to this repository. It was, and every push replaced production with a
+build that served nothing at all: the project's build command is unset and its output
+directory is `website/dist`, which is gitignored, so a fresh clone has no `dist` to
+serve and every URL 404s. Nothing warns you — the push succeeds, GitHub reports the
+commit as deployed, and the site is simply gone until someone notices.
+
+Deploying from `dist` by hand is the only path that works, and it is the one below.
+
+Three things that will silently break the site if they are changed, all learned
 the hard way:
 
-1. **`outputDirectory` drops `assets/`.** Pointing the Vercel project at
-   `outputDirectory: website/dist` with a null buildCommand serves the six files at
-   the root of `dist` and 404s the entire `assets/` tree — every stylesheet,
-   script and screenshot. The page loads and looks broken. The project's
-   `outputDirectory` and `rootDirectory` are both cleared; `dist` is uploaded as
-   the project files instead.
+1. **The project's `outputDirectory` is `website/dist`, and `dist/` is gitignored.**
+   So the two paths diverge. A CLI deploy of the `dist` directory uploads its
+   contents as the project files and works. A build from a git clone has no `dist`
+   at all, because the build command is unset and nothing generates one, and serves
+   an empty output where every URL 404s. This is also why the project is not
+   connected to the repository — see above.
+
+   A bare name in `.vercelignore` matches that directory **at any depth**, which is
+   the other half of this. An unanchored `assets` line silently excluded
+   `dist/assets` *and* `dist/app/assets`, so the upload shipped a site whose HTML
+   loaded and whose entire asset tree 404d — raw, unstyled, no fonts, no icons, and
+   no error to suggest why. Those patterns are anchored with a leading `/` for that
+   reason; do not unanchor them.
 
 2. **`/assets/(.*)` is served `max-age=31536000, immutable` at fixed URLs.** That
    header is only safe if the URL changes when the bytes do. Without versioning,
