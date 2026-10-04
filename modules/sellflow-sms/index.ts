@@ -102,20 +102,42 @@ function requireNative(): SellflowSmsNativeModule {
 
 export async function getListenerStatus(): Promise<SmsListenerStatus> {
   if (!isNativeListenerAvailable) return { ...UNSUPPORTED_STATUS };
-  return requireNative().getListenerStatusAsync();
+  try {
+    return await requireNative().getListenerStatusAsync();
+  } catch {
+    // The native side throws when the React context is gone, which happens
+    // whenever JS is starting up or shutting down. Reporting "unsupported" is
+    // the honest answer -- we cannot tell whether the permission is granted, and
+    // the status screen must never show a healthy state it cannot prove.
+    return { ...UNSUPPORTED_STATUS };
+  }
 }
 
 /** Queued candidates, oldest first, left in place until acknowledged. */
 export async function peekCandidates(): Promise<PaymentCandidate[]> {
   if (!isNativeListenerAvailable) return [];
-  return requireNative().peekCandidatesAsync();
+  try {
+    return await requireNative().peekCandidatesAsync();
+  } catch {
+    // The React context is gone. Nothing is lost: the candidates are in the native
+    // queue and are read again on the next pass. Swallowing this is deliberate --
+    // a throw here would be caught and reported as a failed send, which is a lie.
+    return [];
+  }
 }
 
 export async function acknowledgeCandidates(
   fingerprints: string[],
 ): Promise<number> {
   if (!isNativeListenerAvailable || fingerprints.length === 0) return 0;
-  return requireNative().acknowledgeCandidatesAsync(fingerprints);
+  try {
+    return await requireNative().acknowledgeCandidatesAsync(fingerprints);
+  } catch {
+    // The candidates stay queued and are redelivered. Redelivery is safe: the
+    // JavaScript queue recognises them by identity and the server refuses a
+    // duplicate regardless.
+    return 0;
+  }
 }
 
 export async function discardCandidate(fingerprint: string): Promise<boolean> {

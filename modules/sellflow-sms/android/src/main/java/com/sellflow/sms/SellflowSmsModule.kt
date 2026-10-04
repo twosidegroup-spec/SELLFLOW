@@ -1,6 +1,7 @@
 ﻿package com.sellflow.sms
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import com.sellflow.sms.providers.ParseOutcome
@@ -8,17 +9,20 @@ import com.sellflow.sms.providers.PaymentCandidate
 import com.sellflow.sms.providers.Provider
 import com.sellflow.sms.providers.ProviderRegistry
 import com.sellflow.sms.providers.SmsMessage
+import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.lang.ref.WeakReference
 
 /**
  * The JavaScript-facing surface of the native listener.
  *
- * Deliberately narrow: report status, drain candidates, discard one. There is no
- * method that accepts a message, none that returns a raw body, and none that
- * parses anything. JavaScript cannot ask this module to do more than hand over
- * candidates it has already decided are real, which is what keeps the privacy
- * contract a property of the architecture rather than of anyone's discipline.
+ * Deliberately narrow: report status, drain candidates, acknowledge or discard
+ * one. There is no method that accepts a message, none that returns a raw body,
+ * and none that parses anything a seller could turn into a payment. JavaScript
+ * cannot ask this module to do more than hand over candidates it has already
+ * decided are real, which is what keeps the privacy contract a property of the
+ * architecture rather than of anyone's discipline.
  *
  * The permission itself is requested from JavaScript through React Native's
  * `PermissionsAndroid`, which already knows `RECEIVE_SMS`. That means no custom
@@ -26,29 +30,57 @@ import expo.modules.kotlin.modules.ModuleDefinition
  */
 class SellflowSmsModule : Module() {
 
-    private fun queue(): CandidateQueue = CandidateQueue(appContext.reactContext ?: appContext.applicationContext)
+    /**
+     * The Android Context, or null when JavaScript is not running.
+     *
+     * `AppContext.reactContext` is nullable and there is no `applicationContext`
+     * shortcut, so the null case is handled honestly rather than papered over: the
+     * queue is only ever needed while JS is alive, and the receiver -- which does
+     * the work when JS is not -- has a real Context of its own.
+     */
+    private fun context(): Context? = appContext.reactContext
+
+    private fun requireContext(): Context =
+        context() ?: throw IllegalStateException(
+            "The SellFlow SMS listener has no Android context. This happens when the " +
+                "React context is gone; the receiver keeps queuing candidates natively " +
+                "and JavaScript picks them up when it starts.",
+        )
+
+    private fun queue(): CandidateQueue = CandidateQueue(requireContext())
 
     override fun definition() = ModuleDefinition {
         Name(MODULE_NAME)
 
+        // Published for the receiver, which runs with no React context and
+        // therefore cannot reach the module registry itself.
+        OnCreate { publishContext(appContext) }
+
         Events(EVENT_CANDIDATE_DETECTED)
 
         AsyncFunction("getListenerStatusAsync") {
-            val queue = queue()
+            val context = context()
+            val queue = context?.let { CandidateQueue(it) }
+
             val appVersion = runCatching {
-                val info = appContext.reactContext?.packageManager
-                    ?.getPackageInfo(appContext.reactContext.packageName, 0)
-                info?.versionName
+                context?.packageManager?.getPackageInfo(context.packageName, 0)?.versionName
             }.getOrNull() ?: "unknown"
 
             mapOf(
-                "permission" to if (hasSmsPermission()) "granted" else "denied",
-                "receiverActive" to isReceiverActive(appContext.reactContext ?: appContext.applicationContext),
+                // "unsupported" rather than "denied" when there is no context at
+                // all: the honest answer is that we cannot tell, not that the
+                // seller refused.
+                "permission" to when {
+                    context == null -> "unsupported"
+                    hasSmsPermission(context) -> "granted"
+                    else -> "denied"
+                },
+                "receiverActive" to (context?.let { isReceiverActive(it) } ?: false),
                 "appVersion" to appVersion,
                 "androidRelease" to (Build.VERSION.RELEASE ?: "unknown"),
-                "queuedCandidates" to queue.count(),
-                "oldestQueuedAt" to queue.oldestDetectedAt(),
-                "rejections" to queue.rejectionCounts(),
+                "queuedCandidates" to (queue?.count() ?: 0),
+                "oldestQueuedAt" to (queue?.oldestDetectedAt() ?: 0L),
+                "rejections" to (queue?.rejectionCounts() ?: emptyMap<String, Int>()),
             )
         }
 
@@ -116,7 +148,7 @@ class SellflowSmsModule : Module() {
                     "fingerprint" to message.fingerprint,
                 )
                 is ParseOutcome.Rejected -> mapOf(
-                    "rejected" to outcome.rejection.reason.id,
+                    "rejected" to outcome.reason.id,
                     "fingerprint" to message.fingerprint,
                 )
             }
@@ -133,15 +165,37 @@ class SellflowSmsModule : Module() {
         sendEvent(EVENT_CANDIDATE_DETECTED, mapOf("fingerprint" to fingerprint))
     }
 
-    private fun hasSmsPermission(): Boolean {
-        val context = appContext.reactContext ?: appContext.applicationContext
-        return context.checkSelfPermission(Manifest.permission.RECEIVE_SMS) ==
+    private fun hasSmsPermission(context: Context): Boolean =
+        context.checkSelfPermission(Manifest.permission.RECEIVE_SMS) ==
             PackageManager.PERMISSION_GRANTED
-    }
 
-    private companion object {
+    companion object {
         const val MODULE_NAME = "SellflowSms"
-        const val EVENT_CANDIDATE_DETECTED = "onPaymentCandidateDetected"
+        private const val EVENT_CANDIDATE_DETECTED = "onPaymentCandidateDetected"
+
+        /**
+         * The module instance, published so the broadcast receiver can reach it.
+         *
+         * `AppContext` has no `applicationContext` and the receiver is handed an
+         * Android `Context`, not an `AppContext`, so there is no supported way to
+         * walk from one to the other. Holding the module here is the honest
+         * solution: the receiver asks for it only as an OPTIMISATION, and every
+         * payment has already been written to the durable queue before it does.
+         *
+         * A weak reference, so this cannot keep the runtime alive after React
+         * Native has gone.
+         */
+        @Volatile
+        private var instance: WeakReference<SellflowSmsModule>? = null
+
+        /** The live module, or null when JavaScript is not running. */
+        @JvmStatic
+        fun live(): SellflowSmsModule? = instance?.get()
+
+        private fun publishContext(context: AppContext) {
+            instance = context.registry.getModule(MODULE_NAME)
+                ?.let { WeakReference(it as? SellflowSmsModule ?: return) }
+        }
     }
 }
 

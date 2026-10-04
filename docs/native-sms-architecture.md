@@ -226,19 +226,28 @@ providers from quietly collapsing into one shared parser.
 
 ## Verification status
 
+Last updated after the verification pass that installed a JDK 17 and Android SDK 36
+and actually compiled the module.
+
 | Claim | Status | How |
 | --- | --- | --- |
-| Expo config resolves, module autolinks, manifest is correct and idempotent | **Verified here** | `npx expo prebuild --platform android`; manifest inspected |
-| TypeScript, ESLint, expo-doctor | **Verified here** | `npm run typecheck`, `npm run lint`, `npx expo-doctor` |
-| Adapter → `ingest_payment_event` → `match_payment_event` → `record_payment` → order paid → finance | **Verified here** | `verify_payment_sms_adapter.sql` §1 |
-| Duplicate, replay, forgery, cross-tenant, wrong account, wrong amount, expired, ambiguous, staff | **Verified here** | `verify_payment_sms_adapter.sql` §2–§6 |
-| Queue durability, backoff, retry classification, idempotency key reuse | **Verified here** | `scripts/sms-adapter.test.mjs` |
-| Corpus integrity and coverage claims | **Verified here** | `scripts/sms-adapter.test.mjs` |
-| Provider parsers against the fixture corpus | **NOT EXECUTED** | Kotlin/JUnit needs a JDK: `cd android && ./gradlew :sellflow-sms:testDebugUnitTest` |
-| Any parser against a real provider message | **NOT VERIFIED** | Needs a real device; `docs/device-qa-checklist.md` |
-| The APK builds and the receiver fires | **NOT VERIFIED** | No JDK, Android SDK, `adb` or device in the authoring environment |
+| **Kotlin compilation** | **VERIFIED** | `gradlew :sellflow-sms:compileDebugKotlin`. Took **43 fixes** the first time — see `docs/device-qa-checklist.md` Findings F1–F4. |
+| **Provider parser suite** | **VERIFIED — 27/27** | `gradlew :sellflow-sms:testDebugUnitTest`, against the real Kotlin, including the whole 36-case corpus. |
+| Module packages as an Android library | **VERIFIED** | `:sellflow-sms:assembleDebug` and `:assembleRelease` produce AARs; `classes.jar` contains the receiver and all four adapters. |
+| App module Kotlin compiles | **VERIFIED** | `:app:compileDebugKotlin` |
+| Manifest merge: 1 SMS permission, 1 SMS receiver, 1 `<application>`, 0 forbidden | **VERIFIED** | Inspected in `android/app/build/intermediates/merged_manifests/debug/…`. |
+| Expo config, expo-doctor | **VERIFIED — 21/21** | `npx expo-doctor` |
+| Adapter → `ingest_payment_event` → `match_payment_event` → `record_payment` → order paid → finance | **VERIFIED** | `verify_payment_sms_adapter.sql` §1 |
+| Duplicate, replay, forgery, cross-tenant, wrong account, wrong amount, expired, ambiguous, staff | **VERIFIED** | `verify_payment_sms_adapter.sql` §2–§6 |
+| Queue durability, backoff, retry classification, idempotency-key reuse | **VERIFIED** | `scripts/sms-adapter.test.mjs` (51 tests) |
+| Corpus integrity and coverage claims | **VERIFIED** | `scripts/sms-adapter.test.mjs` |
+| Full debug APK | **BLOCKED** | Third-party C++ (`react-native-worklets`, `react-native-screens`) fails to link `libc++_shared` under NDK 27 on this Windows host. Not caused by this repository; see Finding F5. |
+| Any parser against a **real** provider message | **NOT VERIFIED** | Needs a real payment. No device, and no way to send one. |
+| The APK builds and the receiver fires on a phone | **NOT VERIFIED** | No device connected (`adb devices` is empty). |
+| The seller-facing UI has been rendered | **NOT VERIFIED** | Needs a device or simulator. |
+| Logcat is clean during a real payment | **NOT VERIFIED** | Needs a device. Statically there is no logging statement in the module at all. |
 
-The last two are the honest gap, and they are the reason the release report
-distinguishes "representative fixture tested", "unit-tested parser", "real
-captured-message tested" and "real-device tested". Only the first is true of any
-provider parser today.
+The bottom four are the honest gap. The correct description of this feature today is
+*"implemented and verified locally; real-device verification pending"* — and the
+release checklist that says so is `docs/device-qa-checklist.md`, where every such
+row is marked BLOCKED with the reason.

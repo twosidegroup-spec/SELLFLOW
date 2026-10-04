@@ -89,15 +89,6 @@ class CandidateQueue(context: Context) {
         return true
     }
 
-    /** Removes one candidate the server has definitively refused or aged out. */
-    fun discard(fingerprint: String): Boolean {
-        val rows = readRows()
-        val kept = rows.filter { it.optString(KEY_FINGERPRINT) != fingerprint }
-        if (kept.size == rows.size) return false
-        writeRows(kept)
-        return true
-    }
-
     fun count(): Int = readRows().size
 
     /** Age in milliseconds of the oldest queued candidate, or 0 when empty. */
@@ -125,18 +116,36 @@ class CandidateQueue(context: Context) {
 
     // ---------------------------------------------------------------- internals
 
-    private fun readRows(): JSONArray =
-        runCatching { JSONArray(prefs.getString(KEY_ROWS, "[]") ?: "[]") }
-            .getOrDefault(JSONArray())
+    /**
+     * The stored rows, as a Kotlin list.
+     *
+     * Converted out of [JSONArray] immediately on purpose. Android's `org.json`
+     * JSONArray is not `Iterable` and has no `size` property, so every collection
+     * operation on it has to go through this function -- which is much easier to
+     * get right than remembering that `filter {}` does not compile on one.
+     */
+    private fun readRows(): MutableList<JSONObject> {
+        val raw = runCatching { JSONArray(prefs.getString(KEY_ROWS, "[]") ?: "[]") }
+            .getOrNull()
+            ?: return mutableListOf()
 
-    private fun writeRows(rows: JSONArray) {
+        val rows = ArrayList<JSONObject>(raw.length())
+        for (index in 0 until raw.length()) {
+            rows.add(raw.optJSONObject(index) ?: continue)
+        }
+        return rows
+    }
+
+    private fun writeRows(rows: List<JSONObject>) {
+        val array = JSONArray()
+        for (row in rows) array.put(row)
         // commit(), not apply(): see the class comment.
-        prefs.edit().putString(KEY_ROWS, rows.toString()).commit()
+        prefs.edit().putString(KEY_ROWS, array.toString()).commit()
     }
 
     private fun readCounters(): JSONObject =
         runCatching { JSONObject(prefs.getString(KEY_REJECTIONS, "{}") ?: "{}") }
-            .getOrDefault(JSONObject())
+            .getOrElse { JSONObject() }
 
     private fun writeCounters(counters: JSONObject) {
         prefs.edit().putString(KEY_REJECTIONS, counters.toString()).commit()

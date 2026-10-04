@@ -47,8 +47,12 @@ object MessageText {
      * The digit boundaries are lookarounds so `1000` never matches inside
      * `10001`, and the nine-digit ceiling means a phone number can never be read
      * as an amount even if a label sits next to one.
+     *
+     * A leading `-` is excluded too. Without it, "Tk -500" parses as a transfer of
+     * 500: the sign is simply not part of the match. Found by adversarial testing,
+     * and a transfer must never be the absolute value of a negative figure.
      */
-    private val AMOUNT = Regex("(?<![\\d.,])(\\d{1,9}(?:,\\d{2,3})*(?:\\.\\d{1,2})?)(?![\\d])")
+    private val AMOUNT = Regex("(?<![\\d.,-])(\\d{1,9}(?:,\\d{2,3})*(?:\\.\\d{1,2})?)(?![\\d])")
 
     /**
      * A currency token.
@@ -396,17 +400,20 @@ fun anchoredAmount(
     fun transactionTimestampMillis(text: String): Long? {
         val date = DATE.find(text)?.value ?: ENGLISH_DATE.find(text)?.value ?: return null
         val clock = CLOCK.find(text)?.value ?: return null
-        val time = parseClock(clock) ?: return null
-        val day = parseDate(date) ?: return null
+
+        // Destructured rather than indexed: a Triple has no `get`, and the
+        // component names are what make the calendar call below readable.
+        val (hour, minute, isPm) = parseClock(clock) ?: return null
+        val (year, month, dayOfMonth) = parseDate(date) ?: return null
 
         val calendar = Calendar.getInstance(TimeZone.getTimeZone("Asia/Dhaka"))
         calendar.clear()
         calendar.set(
-            day[0],
-            day[1] - 1,
-            day[2],
-            if (time[2]) (time[0] % 12) + 12 else time[0],
-            time[1],
+            year,
+            month - 1,
+            dayOfMonth,
+            if (isPm) (hour % 12) + 12 else hour,
+            minute,
             0,
         )
         return calendar.timeInMillis

@@ -59,16 +59,14 @@ object ProviderRegistry {
         // refusal is reported as a passcode rather than as "not a payment
         // message" -- a diagnostic a developer can act on.
         if (MessageText.looksSuspicious(message.messageBody)) {
-            return ParseOutcome.Rejected(ParseRejection(RejectionReason.NOT_A_PAYMENT_MESSAGE))
+            return ParseOutcome.Rejected(RejectionReason.NOT_A_PAYMENT_MESSAGE)
         }
         if (MessageText.looksLikeOtpOrSecurity(message.messageBody)) {
-            return ParseOutcome.Rejected(ParseRejection(RejectionReason.OTP_OR_SECURITY_MESSAGE))
+            return ParseOutcome.Rejected(RejectionReason.OTP_OR_SECURITY_MESSAGE)
         }
 
         val adapter = detect(message)
-            ?: return ParseOutcome.Rejected(
-                ParseRejection(unclaimedReason(message.messageBody)),
-            )
+            ?: return ParseOutcome.Rejected(unclaimedReason(message.messageBody))
 
         return try {
             adapter.parse(message)
@@ -76,7 +74,7 @@ object ProviderRegistry {
             // The message is not retained, not logged, and not attached to the
             // exception. A count is enough: the seller needs to know the listener
             // saw something it could not read, not what it said.
-            ParseOutcome.Rejected(ParseRejection(RejectionReason.AMBIGUOUS_FIELDS))
+            ParseOutcome.Rejected(RejectionReason.AMBIGUOUS_FIELDS)
         }
     }
 

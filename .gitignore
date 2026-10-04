@@ -18,6 +18,13 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# Gradle output from the local Expo module.
+# The root /android is ignored below, but a local module's android/ directory is
+# real source -- only its build output must be excluded, or the APK/AAR artefacts
+# and test reports end up in the repository.
+modules/*/android/build/
+modules/*/android/.cxx/
+
 # Metro
 .metro-health-check*
 

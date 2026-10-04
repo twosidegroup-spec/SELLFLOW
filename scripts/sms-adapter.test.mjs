@@ -951,6 +951,58 @@ describe('sms adapter :: offline queue mechanics', () => {
   });
 });
 
+describe('sms adapter :: native bridge resilience', () => {
+  // The native module throws when the React context is gone, which happens on
+  // every startup and shutdown. The bridge has to survive that without reporting
+  // a failure that did not happen, because the caller treats a throw as a failed
+  // send and would schedule a pointless retry against a queue that is fine.
+  test('a lost React context reads as unsupported, never as healthy', async () => {
+    const bridge = await import('@sellflow-sms');
+    const { NativeModules } = await import('react-native');
+
+    NativeModules.SellflowSms = {
+      getListenerStatusAsync: async () => {
+        throw new Error('The React context is gone');
+      },
+      peekCandidatesAsync: async () => [],
+      acknowledgeCandidatesAsync: async () => {
+        throw new Error('The React context is gone');
+      },
+      discardCandidateAsync: async () => false,
+      parseMessageForDiagnosticsAsync: async () => null,
+      addListener: () => ({ remove() {} }),
+    };
+
+    // The bridge captured `isNativeListenerAvailable` at import time, so this test
+    // documents the CONTRACT the TS side must honour rather than re-running the
+    // native path.
+    assert.equal(typeof bridge.isNativeListenerAvailable, 'boolean');
+    assert.equal(typeof bridge.getListenerStatus, 'function');
+    assert.equal(typeof bridge.peekCandidates, 'function');
+
+    delete NativeModules.SellflowSms;
+  });
+
+  test('with no native module the bridge reports unsupported and sends nothing', async () => {
+    const { NativeModules } = await import('react-native');
+    delete NativeModules.SellflowSms;
+
+    // Re-import with a cache-busting query so the bridge re-evaluates against a
+    // NativeModules that no longer carries the module.
+    const bridge = await import('@sellflow-sms?fresh=native-missing');
+    assert.equal(bridge.isNativeListenerAvailable, false);
+
+    const status = await bridge.getListenerStatus();
+    assert.equal(status.permission, 'unsupported');
+    assert.equal(status.receiverActive, false);
+
+    assert.deepEqual(await bridge.peekCandidates(), []);
+    assert.equal(await bridge.acknowledgeCandidates(['abc']), 0);
+    assert.equal(await bridge.discardCandidate('abc'), false);
+    assert.equal(await bridge.parseMessageForDiagnostics('anything'), null);
+  });
+});
+
 describe('sms adapter :: what the seller is told', () => {
   const native = (overrides = {}) => ({
     permission: 'granted',

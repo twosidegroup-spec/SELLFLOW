@@ -62,9 +62,9 @@ class SellflowSmsReceiver : BroadcastReceiver() {
             when (val outcome = ProviderRegistry.parse(message)) {
                 is ParseOutcome.Parsed -> {
                     queue.enqueue(outcome.candidate)
-                    notifyJavaScriptIfRunning(context, outcome.candidate.fingerprint)
+                    notifyJavaScriptIfRunning(outcome.candidate.fingerprint)
                 }
-                is ParseOutcome.Rejected -> queue.recordRejection(outcome.rejection.reason.id)
+                is ParseOutcome.Rejected -> queue.recordRejection(outcome.reason.id)
             }
             // `message` goes out of scope here. Nothing above kept its text.
         }
@@ -73,21 +73,19 @@ class SellflowSmsReceiver : BroadcastReceiver() {
     /**
      * Best-effort wake of a running JavaScript context.
      *
-     * Purely an optimisation. When the app is closed there is no React context
-     * and nothing is sent -- which is fine, because the candidate is already in
-     * [CandidateQueue] and the app drains the queue the moment it next starts.
-     * The queue is the guarantee; this is the fast path.
+     * Purely an optimisation. When the app is closed there is no React context and
+     * nothing is sent -- which is fine, because the candidate is already in
+     * [CandidateQueue] and the app drains the queue the moment it next starts. The
+     * queue is the guarantee; this is the fast path.
+     *
+     * Every failure here is swallowed deliberately. A nudge that fails must never
+     * take the receiver down, because the payment has already been recorded and a
+     * crash here would turn a delivered payment into a silently lost one.
      */
-    private fun notifyJavaScriptIfRunning(context: Context, fingerprint: String) {
+    private fun notifyJavaScriptIfRunning(fingerprint: String) {
         runCatching {
-            val appContext = context.applicationContext as? expo.modules.kotlin.AppContext ?: return
-            val module = appContext.getModule(MODULE_NAME) as? SellflowSmsModule ?: return
-            module.emitQueuedCandidateChanged(fingerprint)
+            SellflowSmsModule.live()?.emitQueuedCandidateChanged(fingerprint)
         }
-    }
-
-    private companion object {
-        const val MODULE_NAME = "SellflowSms"
     }
 }
 

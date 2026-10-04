@@ -101,6 +101,13 @@ enum class RejectionReason(val id: String) {
 /** Either a candidate or a counted refusal. Never both, never neither. */
 sealed class ParseOutcome {
     data class Parsed(val candidate: PaymentCandidate) : ParseOutcome()
+
+    /**
+     * A refusal, carrying only the reason.
+     *
+     * Deliberately no wrapper object and no message text: the reason is a code
+     * that gets counted, and anything else would be something worth retaining.
+     */
     data class Rejected(val reason: RejectionReason) : ParseOutcome()
 }
 
@@ -223,7 +230,7 @@ abstract class AbstractProviderAdapter : ProviderAdapter {
     }
 
     protected fun reject(reason: RejectionReason): ParseOutcome.Rejected =
-        ParseOutcome.Rejected(ParseRejection(reason))
+        ParseOutcome.Rejected(reason)
 
     private companion object {
         /**
@@ -236,6 +243,3 @@ abstract class AbstractProviderAdapter : ProviderAdapter {
         )
     }
 }
-
-/** A refusal plus the reason it happened, for counting without retaining text. */
-data class ParseRejection(val reason: RejectionReason)

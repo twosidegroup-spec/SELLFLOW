@@ -3,6 +3,13 @@
 Status: **conditional go** for building the native listener. Not a clearance to ship.
 Last verified: 3 October 2026, against the live policy pages linked below.
 
+**Update after the Phase 2 verification pass.** The native listener now exists and
+compiles, and this document has been checked against what was actually built rather
+than against a plan. §9 below records what is now true, and §10 what would still
+have to be done **if** a Play submission were chosen. SellFlow is currently
+distributed by APK from its own website, so no Play-specific work has been done and
+none is implied. **No claim of Play approval is made or implied anywhere.**
+
 This document exists because automatic bKash/Nagad/Rocket detection depends on
 reading one inbound SMS, and `RECEIVE_SMS` is a restricted permission. It records
 what the policy actually says, which part of it applies to SellFlow, and what we
@@ -176,3 +183,136 @@ Verified 3 October 2026.
 
 Policy pages are living documents. The dates above are the honest ones: if this file
 is more than a few months old, re-verify before trusting it.
+
+---
+
+## 9. What the implementation now actually does
+
+Written for a reviewer filling in the Permissions Declaration Form. Every line is
+backed by a test; the test is named.
+
+### Why `RECEIVE_SMS` is required
+
+Automatic payment detection reads the notification a mobile financial service sends
+when money arrives at a seller's receiving number, extracts the payment service,
+amount, transaction reference and the numbers involved, and submits those fields to
+SellFlow's existing payment engine so an order can be reconciled without the seller
+typing anything.
+
+Without the notification there is no signal at all: the seller would have to read
+the message and enter it by hand. That is the same clerical work, not an alternative
+mechanism, which is why it does not satisfy the policy's "no alternative method"
+condition.
+
+### The core functionality it supports
+
+SellFlow's payment detection engine is its primary differentiator for a Bangladeshi
+retailer, and the notification is what makes it automatic. A build without
+`RECEIVE_SMS` still records payments by hand through the same `record_payment`
+boundary, and that fallback is implemented and tested — which is precisely why a
+Play-compliant build is always available if the exception is refused.
+
+### Why the data cannot be obtained through a less-sensitive mechanism
+
+- There is no API a small merchant can use to be notified when an arbitrary customer
+  sends them money by bKash, Nagad, Rocket or Upay. The merchant-facing products
+  that exist are commercial, separately eligible and separately priced.
+- `content://sms` (the inbox) requires `READ_SMS`, which is **more** sensitive, not
+  less. It is not used.
+- Becoming the default SMS handler would grant inbox, compose and send access —
+  far more capability than the feature needs, and something this app will not do.
+
+### Data processed
+
+Exactly nine fields, produced on the device before anything touches the network:
+
+| Field | Why |
+| --- | --- |
+| provider | Which MFS reported it. An enum the database already has. |
+| amount | The transfer amount. |
+| transactionId | The provider's own reference, and the idempotency key. |
+| receiverAccount | The number that received the money. |
+| senderAccount | The payer's number, when the message states one. |
+| transactionTimestamp | When the money moved, when stated. |
+| detectedAt | When the phone saw it. |
+| fingerprint | SHA-256 hex of the message. |
+| parserVersion | Which parser version produced these fields. |
+
+### What leaves the device
+
+One request to the seller's own Supabase project, containing those nine fields plus
+the seller's connected payment-account id, an idempotency key, and a support string
+of the form `android:<release>:sms:<appVersion>:p<parserVersion>`. That string
+contains no device identifier, no advertising id and no account number.
+
+Nothing goes to a third party. There is no analytics SDK, no crash reporter and no
+telemetry in this feature or anywhere in the app.
+
+### What is never stored
+
+**The text of a message, anywhere.** Not the native queue, not AsyncStorage, not
+SQLite, not a file, not a log, not a crash report, not a request body.
+
+Enforced three ways rather than by promise:
+
+1. `PaymentCandidate` — the only type that leaves the parser — has no field capable
+   of holding text, so the queue cannot hold one either.
+2. `scripts/payment-boundary.test.mjs` enumerates every file in the native module
+   that mentions `messageBody` and requires each to be in the parsing pipeline.
+   `CandidateQueue` is separately asserted never to contain the word.
+3. The development-only diagnostics panel, which parses a pasted message, is
+   asserted to touch no storage and to have no path to `ingest_payment_event`.
+
+`payment_events.fingerprint` — the SHA-256 — is the only value derived from the
+body that outlives it. A digest cannot be read back into text.
+
+### What is never logged
+
+The native module contains **no logging statement of any kind**:
+`grep -rn 'Log\.\|println\|System\.out\|printStackTrace' modules/sellflow-sms --include=*.kt`
+returns no call sites. Parse refusals are counted by reason code and never
+recorded with the text.
+
+### Minimum scope, demonstrated
+
+| Check | Result |
+| --- | --- |
+| `READ_SMS`, `SEND_SMS`, `WRITE_SMS`, `RECEIVE_MMS`, `RECEIVE_WAP_PUSH`, `BROADCAST_SMS`, contacts, call log | **0 occurrences** in the merged manifest |
+| `BROADCAST_SMS` (the default-SMS-handler gate) | Not requested — the app is not and will not become a default SMS handler |
+| SellFlow is the default SMS app | No |
+| Manifest changed only through one reviewable config plugin | Yes — `plugins/withSellflowSms.js` |
+| Passcodes refused before any provider sees the message | Yes — asserted by `a passcode is never a payment` |
+
+### What is still unproven, and is stated as such
+
+The provider notification texts are **not publicly documented**. The parser fixtures
+encode the reported *structure* of a money-in notification and are labelled
+REPRESENTATIVE/UNVERIFIED inside the data file. No parser has been run against a
+real captured provider message, and the feature has never run on a handset.
+
+A Permissions Declaration Form asks what the permission is used for. Answering it
+honestly requires a real captured message per provider, so that work is a
+prerequisite to any Play submission — not an optional refinement.
+
+## 10. If a Play submission is ever chosen
+
+SellFlow currently ships as an APK from its own website. Nothing below has been
+done, and nothing below is required for that distribution.
+
+1. Complete the Permissions Declaration Form naming `RECEIVE_SMS` and declaring
+   *SMS-based financial transactions*. Without it the app "may be removed".
+2. Prominent in-app disclosure before the request — already implemented on
+   *Payments → Automatic detection*, and consent is not bundled into sign-up.
+3. Update the Privacy Policy to describe SMS handling, the fields extracted, and
+   retention of normalised events.
+4. Update the Data Safety form to declare the SMS-derived data and its use.
+5. Store listing must document automatic payment detection as core functionality.
+6. Write out the "no alternative" argument in the declaration form.
+7. Confirm no unrelated SMS data leaves the device — a device test, not a code review.
+8. Record Play policy review sign-off before release.
+9. Re-check the live policy pages; the links in §7 are from October 2026.
+
+If the exception is refused, remove `RECEIVE_SMS` and ship through the
+already-implemented `manual` path. No matching rule, ledger, audit trail or
+idempotency guarantee is lost — see §5. **A refusal must not be answered by
+misdeclaring the use.**
