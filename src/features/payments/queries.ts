@@ -247,9 +247,7 @@ export function usePaymentReview(orgId: string | undefined) {
     queryFn: async () => {
       const { data, error } = await getSupabase()
         .from('payment_events')
-        .select(
-          '*, payment_matches(*, orders!left(id, order_number)), orders!left(id, order_number), payment_accounts!left(id, provider, label)',
-        )
+        .select(EVENT_WITH_ORDER_ASSOCIATION)
         .eq('org_id', orgId as string)
         .in('status', ['review_required', 'unmatched', 'mismatch'])
         .order('detected_at', { ascending: false })
@@ -257,16 +255,27 @@ export function usePaymentReview(orgId: string | undefined) {
 
       if (error) throw error;
 
-      return ((data ?? []) as unknown[]).map((row) => {
-        const raw = row as PaymentEventRow & {
-          payment_matches?: unknown;
-          orders?: unknown;
-          payment_accounts?: unknown;
-        };
+      const rows = (data ?? []) as unknown[];
+
+      /*
+       * Order numbers, resolved in a second pass.
+       *
+       * The event's order is not reachable by an embed, and no schema change
+       * should make it one -- see `orderNumbersFor`. So the intent reference ids
+       * come back with the events and the numbers are fetched for exactly those.
+       */
+      const orderNumbers = await orderNumbersFor(
+        collectIntentOrderIds(rows as RawEventWithIntents[]),
+      );
+
+      return rows.map((row) => {
+        const raw = row as RawEventWithIntents;
         return {
           ...(raw as PaymentEventRow),
-          payment_matches: embeddedMatches(raw.payment_matches),
-          orders: embeddedOrder(raw.orders),
+          payment_matches: embeddedMatches(raw.payment_matches).map((match) =>
+            toReviewCandidate(match, orderNumbers),
+          ),
+          orders: resolveOrder(raw.payments, raw.payment_intents, orderNumbers),
           payment_accounts: embeddedAccount(raw.payment_accounts),
         } satisfies ReviewEvent;
       });
@@ -286,12 +295,198 @@ export function usePaymentReview(orgId: string | undefined) {
   };
 }
 
-function embeddedMatches(value: unknown): ReviewCandidate[] {
+function embeddedMatches(value: unknown): RawMatch[] {
   if (!Array.isArray(value)) return [];
   return value.map((entry) => {
-    const raw = entry as PaymentMatchRow & { orders?: unknown };
-    return { ...(raw as PaymentMatchRow), orders: embeddedOrder(raw.orders) };
+    const raw = entry as PaymentMatchRow & { payment_intents?: unknown };
+    return { ...(raw as PaymentMatchRow), payment_intents: embeddedIntent(raw.payment_intents) };
   });
+}
+
+/* -------------------------------------------------------------------------
+ * How an event reaches its order, and why it needs two queries
+ *
+ * The obvious query is `payment_events.select('*, orders!left(id, order_number)')`
+ * and it does not work, because `payment_events` has no relationship to `orders`.
+ * The table carries `org_id` and `payment_account_id`, plus `matched_intent_id`
+ * and `payment_id`. Nothing else. PostgREST can only embed along a real foreign
+ * key, so the request is rejected outright with HTTP 400 and the screen renders
+ * empty -- which is what happened: both the review queue and the activity feed
+ * returned nothing on Android and on the web alike.
+ *
+ * The real paths, and which of them are embeddable:
+ *
+ *   SETTLED (confirmed)
+ *     payment_events.payment_id -> payments.id -> payments.order_id -> orders.id
+ *     `payments.order_id` is a real foreign key, so this whole chain nests in one
+ *     embed. Used, because the payment row is the authoritative record of what
+ *     was actually paid against.
+ *
+ *   PROPOSED (review_required / unmatched / mismatch)
+ *     payment_events.matched_intent_id -> payment_intents.id
+ *     payment_matches.payment_intent_id -> payment_intents.id
+ *     payment_intents.reference_id -> orders.id
+ *
+ *   ...and that last hop is **deliberately not a foreign key**. Migration 0022
+ *   says so: `reference_id` is polymorphic, pointing at `orders` for type
+ *   'order' and at a subscription row for type 'subscription', and a
+ *   polymorphic reference cannot be constrained. So it is not embeddable, and
+ *   adding a foreign key to make the embed work would be wrong twice over: it
+ *   would be a constraint the schema explicitly argues against, and it would
+ *   still not be correct for the subscription case.
+ *
+ * So the intent reference ids ride back with the events, and the order numbers
+ * are fetched for exactly those ids and joined in memory. One extra round trip,
+ * no schema change, and every read stays a plain `authenticated` query under the
+ * same RLS as everything else in this file.
+ * ---------------------------------------------------------------------- */
+
+/** One order, reduced to what these screens actually display. */
+export type OrderRef = { id: string; order_number: string };
+
+/**
+ * The embedded columns that lead to an order.
+ *
+ * Every path here is a real foreign key:
+ * `payment_matches.payment_event_id`, `payment_matches.payment_intent_id`,
+ * `payment_events.matched_intent_id`, `payment_events.payment_id` and
+ * `payments.order_id`.
+ */
+const EVENT_WITH_ORDER_ASSOCIATION =
+  '*, payment_matches(*, payment_intents!left(id, type, reference_id)), ' +
+  'payment_intents!left(id, type, reference_id), ' +
+  'payments!left(id, order_id, orders!left(id, order_number)), ' +
+  'payment_accounts!left(id, provider, label)';
+
+/** The shape the two selects above produce, before it is narrowed for a screen. */
+type RawEventWithIntents = PaymentEventRow & {
+  payment_matches?: unknown;
+  payment_intents?: unknown;
+  payments?: unknown;
+  payment_accounts?: unknown;
+};
+
+/** A candidate match carrying the intent that identified it. */
+type RawMatch = PaymentMatchRow & { payment_intents: EmbeddedIntent | null };
+
+/** An intent, as far as order resolution cares. */
+interface EmbeddedIntent {
+  id: string;
+  type: string;
+  reference_id: string | null;
+}
+
+function embeddedIntent(value: unknown): EmbeddedIntent | null {
+  if (!value) return null;
+  const first = (Array.isArray(value) ? value[0] : value) as
+    | { id?: string; type?: string; reference_id?: string | null }
+    | undefined;
+  if (!first?.id || !first.type) return null;
+  return {
+    id: first.id,
+    type: first.type,
+    reference_id: first.reference_id ?? null,
+  };
+}
+
+/**
+ * The order ids an intent points at, ignoring non-order intents.
+ *
+ * Subscription intents share the `reference_id` column and point somewhere else
+ * entirely, so an order lookup keyed on one of those ids would either miss or --
+ * far worse -- match an unrelated order whose uuid happened to collide.
+ */
+function orderIdFromIntent(intent: EmbeddedIntent | null | undefined): string | null {
+  if (!intent) return null;
+  if (intent.type !== 'order') return null;
+  return intent.reference_id;
+}
+
+/**
+ * Every order id referenced by these events and their candidate matches.
+ *
+ * De-duplicated because the review queue holds one event per intent for several
+ * orders at once, and `in ('id', [...])` with repeats is a longer URL for the same
+ * result.
+ */
+function collectIntentOrderIds(rows: RawEventWithIntents[]): string[] {
+  const ids = new Set<string>();
+
+  const add = (value: unknown) => {
+    const id = orderIdFromIntent(embeddedIntent(value));
+    if (id) ids.add(id);
+  };
+
+  for (const row of rows) {
+    add(row.payment_intents);
+    for (const entry of Array.isArray(row.payment_matches) ? row.payment_matches : []) {
+      add((entry as { payment_intents?: unknown }).payment_intents);
+    }
+  }
+
+  return [...ids];
+}
+
+/**
+ * Order numbers for the given ids.
+ *
+ * A plain `orders` select under the caller's own RLS -- the same `authenticated`
+ * role and the same policies every other read in this file runs under. An empty
+ * map is a legitimate answer, not an error: a subscription intent contributes
+ * nothing, and an order the seller can no longer see contributes nothing.
+ */
+async function orderNumbersFor(ids: string[]): Promise<Map<string, OrderRef>> {
+  const found = new Map<string, OrderRef>();
+  if (ids.length === 0) return found;
+
+  const { data, error } = await getSupabase()
+    .from('orders')
+    .select('id, order_number')
+    .in('id', ids);
+
+  // Not thrown. A missing order number must not empty the whole review queue,
+  // which is the one screen a seller needs when money is unaccounted for. The row
+  // simply shows no order badge, exactly as it did before any of this.
+  if (error) return found;
+
+  for (const row of (data ?? []) as Array<{ id?: string; order_number?: string }>) {
+    if (row.id && row.order_number) found.set(row.id, { id: row.id, order_number: row.order_number });
+  }
+
+  return found;
+}
+
+/**
+ * The order an event or candidate is associated with, or null.
+ *
+ * Prefers the settled `payments` row, because that is what `record_payment`
+ * actually wrote and therefore the strongest statement of which order was paid.
+ * Falls back to the intent, which is the only association a not-yet-settled event
+ * has.
+ *
+ * The two arrive separately because they hang off different tables: `payments`
+ * embeds from the event, while the intent embeds from the event on a settled row
+ * and from the match on a proposed one.
+ */
+function resolveOrder(
+  paymentsValue: unknown,
+  intentValue: unknown,
+  orderNumbers: Map<string, OrderRef>,
+): OrderRef | null {
+  const settled = embeddedOrder(paymentsValue);
+  if (settled) return settled;
+
+  const id = orderIdFromIntent(embeddedIntent(intentValue));
+  return id ? (orderNumbers.get(id) ?? null) : null;
+}
+
+/** A candidate match, with its order resolved and the intent dropped again. */
+function toReviewCandidate(raw: RawMatch, orderNumbers: Map<string, OrderRef>): ReviewCandidate {
+  const { payment_intents, ...match } = raw;
+  return {
+    ...(match as PaymentMatchRow),
+    orders: resolveOrder(null, payment_intents, orderNumbers),
+  };
 }
 
 function embeddedOrder(
@@ -324,7 +519,7 @@ export function usePaymentActivity(orgId: string | undefined) {
     queryFn: async () => {
       const { data, error } = await getSupabase()
         .from('payment_events')
-        .select('*, orders!left(id, order_number)')
+        .select(EVENT_WITH_ORDER_ASSOCIATION)
         .eq('org_id', orgId as string)
         .eq('status', 'confirmed')
         .order('detected_at', { ascending: false })
@@ -332,11 +527,24 @@ export function usePaymentActivity(orgId: string | undefined) {
 
       if (error) throw error;
 
-      return ((data ?? []) as unknown[]).map((row) => {
-        const raw = row as PaymentEventRow & { orders?: unknown };
+      const rows = (data ?? []) as unknown[];
+
+      /*
+       * Every row here is confirmed, so `payment_id` is set and the order nests in
+       * the single select. The intent lookup is still run because it costs one
+       * request on an already-small result set and removes the dependency on that
+       * invariant holding -- a confirmed event whose payment row is unreadable
+       * under RLS still names its order rather than going blank.
+       */
+      const orderNumbers = await orderNumbersFor(
+        collectIntentOrderIds(rows as RawEventWithIntents[]),
+      );
+
+      return rows.map((row) => {
+        const raw = row as RawEventWithIntents;
         return {
           ...(raw as PaymentEventRow),
-          orders: embeddedOrder(raw.orders),
+          orders: resolveOrder(raw.payments, raw.payment_intents, orderNumbers),
         } satisfies ActivityEvent;
       });
     },
