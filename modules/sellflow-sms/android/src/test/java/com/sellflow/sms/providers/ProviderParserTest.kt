@@ -3,6 +3,7 @@ package com.sellflow.sms.providers
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -23,11 +24,14 @@ import org.junit.Test
  *
  *   cd android && ./gradlew :sellflow-sms:testDebugUnitTest
  *
- * **Fixture provenance: REPRESENTATIVE, not captured.** See the `provenance` block
- * in the corpus and `docs/device-setup.md`. These fixtures prove the parser
- * behaves as specified against the structure of a money-in notification. They do
- * NOT prove it against any operator's real current wording, and a green run here
- * must never be reported as "bKash parsing verified on a real payment".
+ * **Fixture provenance is MIXED.** See the `provenance` block in the corpus. Most
+ * cases are representative; the `bkash-real-*` cases are structures taken from a
+ * real 65 BDT payment that this app received and refused, with the transaction
+ * reference redacted. The rule for reading a green run here: it proves the parser
+ * behaves as specified against structures that include the one that actually
+ * failed, and it proves nothing at all about an operator's wording tomorrow. A
+ * green run must never be reported as "bKash parsing verified on a real payment"
+ * unless a real payment on a real handset actually completed the whole chain.
  */
 class ProviderParserTest {
 
@@ -491,41 +495,143 @@ class ProviderParserTest {
     }
 
     @Test
-    fun `detection needs the provider name in the message`() {
-        // The documented limitation, pinned so it cannot regress unnoticed.
+    fun `a real bKash receipt is detected from its sender, not a brand word`() {
+        // THE REGRESSION. This is the shape of a real 65 BDT payment that arrived on
+        // a seller's handset, was delivered to the receiver, and was refused -- while
+        // all 27 tests in this suite passed.
         //
-        // Provider detection reads the provider's own branding out of the message
-        // body. The stable alternative signal -- the sending shortcode -- is NOT
-        // used, because the shortcodes are not publicly documented and guessing
-        // them would risk attributing one provider's money to another. So a message
-        // that omits the brand is not detected, rather than being attributed to the
-        // wrong provider. `docs/device-qa-checklist.md` §L is where a real captured
-        // message settles whether this matters in practice.
+        // Two things were wrong with the detection rule, and both are visible in the
+        // fixture corpus rather than in any assertion here:
+        //
+        //   1. bKash does not put its name in the body. bKash's own security guidance
+        //      tells customers the transaction SMS comes FROM bKash, which is the
+        //      originating address. The body is a bare receipt naming the payer.
+        //   2. The amount is written Tk65.00, with no space after the currency token.
+        //
+        // Detection used to require the brand word in the body, so this message was
+        // refused as `unsupported_provider` and the seller saw a healthy screen and
+        // no payment. It is now claimed from the originating address.
         val outcome = ProviderRegistry.parse(
             SmsMessage(
                 "bKash",
-                "You have received Tk 500 from 01712345678. TrxID: NOBRAND002",
+                "You have received Tk65.00 from 01712345678. TrxID: 9REAL0650AA",
+                1_700_000_000_000L,
+                "x",
+            ),
+        )
+
+        assertTrue(
+            "a real bKash receipt must be detected, got $outcome",
+            outcome is ParseOutcome.Parsed,
+        )
+        val candidate = (outcome as ParseOutcome.Parsed).candidate
+        assertEquals("bkash", candidate.provider.id)
+        assertEquals(65.0, candidate.amount, 0.001)
+        assertEquals("9REAL0650AA", candidate.transactionId)
+        assertEquals("01712345678", candidate.senderAccount)
+        // Absent, not invented: the body names the payer, and the payee is resolved
+        // on the JavaScript side from the seller's own connected account.
+        assertNull(
+            "a receipt that names no payee must not invent one",
+            candidate.receiverAccount,
+        )
+        assertEquals(
+            "parserVersion must be bumped when detection rules change",
+            2,
+            candidate.parserVersion,
+        )
+    }
+
+    @Test
+    fun `a recognised sender is not on its own enough to become a payment`() {
+        // The other half of the fix, and the half that must not be traded away.
+        //
+        // bKash sends OTPs, promotions and campaign blasts from the same address, so
+        // a recognised sender may claim a message but must never accept one. Each of
+        // these is the same sender with the same transfer wording removed or turned
+        // into money leaving.
+        val refused = listOf(
+            // Money leaving, not arriving. The payer sends this to their own handset.
+            "You have sent Tk65.00 to 01712345678. TrxID: 9REAL0650AB" to
+                "a sent message must never count as a receipt",
+            // A promotion from the same address.
+            "Enjoy 10% cashback on every payment this weekend. Tap to claim." to
+                "marketing from a recognised sender must not be claimed",
+            // Receipt wording, but no amount and no reference.
+            "You have received money. Thank you for using bKash." to
+                "a receipt with no amount or reference must be refused, not guessed",
+        )
+
+        for ((body, why) in refused) {
+            val outcome = ProviderRegistry.parse(SmsMessage("bKash", body, 0L, "x"))
+            assertTrue("$why (body: $body) got $outcome", outcome is ParseOutcome.Rejected)
+        }
+    }
+
+    @Test
+    fun `an unbranded receipt from an unrecognised sender is still refused`() {
+        // Guards the fix against being undone by a contains-bKash rule.
+        //
+        // The unbranded real-world body is only acceptable because the address is one
+        // bKash is known to use. From an address it does not use, the identical text
+        // must be refused: recognition is what makes it readable, so without it there
+        // is nothing but an unbranded message claiming money arrived.
+        val outcome = ProviderRegistry.parse(
+            SmsMessage(
+                "01799000111",
+                "You have received Tk65.00 from 01712345678. TrxID: 9REAL0650AC",
                 0L,
                 "x",
             ),
         )
         assertTrue(
-            "an unbranded message must not be attributed to a provider, got $outcome",
+            "an unbranded message from an unknown sender must not be attributed, got $outcome",
             outcome is ParseOutcome.Rejected,
         )
+        assertEquals(
+            "unsupported_provider",
+            (outcome as ParseOutcome.Rejected).reason.id,
+        )
+    }
 
-        // The same message WITH the brand parses, which is what makes this a
-        // detection limitation rather than a broken parser.
-        val branded = ProviderRegistry.parse(
+    @Test
+    fun `a branded message is still read from an address not in the sender list`() {
+        // The sender list is a second signal, not a gate. These addresses are not
+        // publicly documented and a new one may appear without notice, so a body that
+        // names its provider must keep working when the address is unrecognised --
+        // otherwise adding a shortcode would silently become a prerequisite.
+        val outcome = ProviderRegistry.parse(
             SmsMessage(
-                "bKash",
-                "bKash: You have received Tk 500 from 01712345678. TrxID: NOBRAND003",
+                "01600000000000",
+                "bKash: You have received Tk 500 from 01712345678. TrxID: BRANDED0001",
                 0L,
                 "x",
             ),
         )
-        assertTrue("the branded form must parse", branded is ParseOutcome.Parsed)
+        assertTrue("a branded body must parse regardless of sender, got $outcome", outcome is ParseOutcome.Parsed)
     }
+
+    @Test
+    fun `sender matching is normalised and never a substring search`() {
+        // `contains("bKash")` would accept any address with those letters inside it,
+        // and deciding whose money a payment is requires an exact answer. So the
+        // matching rule is checked directly, including the near misses.
+        val bkash = ProviderRegistry.adapterFor(Provider.BKASH)!!
+        val identities = bkash.senderIdentities
+
+        assertTrue("exact match", SenderIdentity.matches("bKash", identities))
+        assertTrue("lower case", SenderIdentity.matches("bkash", identities))
+        assertTrue("spaced", SenderIdentity.matches("B KASH", identities))
+        assertTrue("shortcode", SenderIdentity.matches("16247", identities))
+
+        assertFalse("a longer address is not a match", SenderIdentity.matches("bKashBD", identities))
+        assertFalse("a prefix is not a match", SenderIdentity.matches("bkas", identities))
+        assertFalse("a phone number is not a match", SenderIdentity.matches("01712345678", identities))
+        assertFalse("a neighbouring provider is not a match", SenderIdentity.matches("Nagad", identities))
+        assertFalse("punctuation only matches nothing", SenderIdentity.matches("---", identities))
+        assertFalse("empty matches nothing", SenderIdentity.matches("", identities))
+    }
+
 
     @Test
     fun `an amount is never taken from a balance`() {
@@ -654,9 +760,11 @@ class ProviderParserTest {
         // Most notifications name the payer, not the payee. Absent is the normal
         // case and is resolved downstream from the seller's own connected account.
         //
-        // The provider's own name has to be in the BODY. Detection identifies a
-        // provider from its branding, not from the sending shortcode -- see
-        // `detection needs the provider name in the message` for why.
+        // Detection does not depend on the brand being in the body -- that was the
+        // defect, since a real bKash receipt names only the payer -- so this case
+        // deliberately carries the brand to prove the OTHER half still holds: a
+        // message that names no payee never has one invented for it, whether it was
+        // recognised by its body or by its sender.
         val withoutReceiver = ProviderRegistry.parse(
             SmsMessage(
                 "bKash",

@@ -11,6 +11,9 @@
  * What it does with the text:
  *
  *   - Holds it as one function argument and one native call. Nothing else.
+ *   - Takes the originating address as a separate argument, because detection
+ *     reads the sender as well as the body and a paste that omits it cannot
+ *     reproduce what a real handset did.
  *   - Displays only the outcome: the normalised candidate, or the refusal reason.
  *   - Writes nothing. Not AsyncStorage, not a file, not a log, not the queue.
  *   - Sends nothing. It has no route to `ingest_payment_event` even if a caller
@@ -25,12 +28,14 @@
  */
 
 import { parseMessageForDiagnostics } from '@sellflow-sms';
-import type { PaymentCandidate } from '@sellflow-sms/types';
+import type { NativeProvider, PaymentCandidate } from '@sellflow-sms/types';
 
 /** Why a pasted message produced no candidate. */
 export interface DiagnosticsRejection {
   kind: 'rejected';
   reason: string;
+  /** Which provider claimed it, when one did. Null when nothing claimed it. */
+  detected: NativeProvider | null;
   /** SHA-256 hex, so the same message can be recognised across runs. */
   fingerprint: string;
 }
@@ -38,10 +43,34 @@ export interface DiagnosticsRejection {
 export interface DiagnosticsMatch {
   kind: 'matched';
   candidate: PaymentCandidate;
+  detected: NativeProvider | null;
   fingerprint: string;
 }
 
 export type DiagnosticsOutcome = DiagnosticsMatch | DiagnosticsRejection | null;
+
+/**
+ * A parse result split by stage.
+ *
+ * `detected` is reported apart from `matched`/`rejected` because those fail for
+ * entirely different reasons and a developer holding a real handset needs to know
+ * which one occurred: `detected: null` means detection never claimed the message,
+ * whereas `detected: 'bkash'` with a rejection means detection worked and
+ * extraction did not. Collapsing the two into a single pass/fail is what let the
+ * original defect hide behind a green test suite.
+ */
+export interface DiagnosticsInput {
+  /** The pasted message body. Held only for the duration of this call. */
+  body: string;
+  /**
+   * The originating address the device reported, e.g. `bKash`.
+   *
+   * Not optional in practice. Provider detection reads the sender as well as the
+   * body, so a paste with no address cannot reproduce a device that identified
+   * bKash from its sender -- which is the real production case.
+   */
+  sender?: string;
+}
 
 const REJECTION_COPY: Record<string, string> = {
   not_a_payment_message:
@@ -67,15 +96,32 @@ export function rejectionCopy(reason: string): string {
  *
  * Returns null when the build has no native listener, so the caller can say so
  * rather than pretending the message was rejected.
+ *
+ * The body is passed as one argument and is unreachable the moment this returns:
+ * it is not stored, not written to AsyncStorage, not logged and not uploaded, and
+ * this module has no import that could do any of those things.
  */
-export async function runDiagnostics(body: string): Promise<DiagnosticsOutcome> {
+export async function runDiagnostics({
+  body,
+  sender,
+}: DiagnosticsInput): Promise<DiagnosticsOutcome> {
   if (!body.trim()) return null;
 
-  const result = await parseMessageForDiagnostics(body);
+  const result = await parseMessageForDiagnostics(body, sender);
   if (!result) return null;
 
-  if ('candidate' in result) {
-    return { kind: 'matched', candidate: result.candidate, fingerprint: result.fingerprint };
+  if (result.outcome === 'parsed') {
+    return {
+      kind: 'matched',
+      candidate: result.candidate,
+      detected: result.detected,
+      fingerprint: result.fingerprint,
+    };
   }
-  return { kind: 'rejected', reason: result.rejected, fingerprint: result.fingerprint };
+  return {
+    kind: 'rejected',
+    reason: result.rejected,
+    detected: result.detected,
+    fingerprint: result.fingerprint,
+  };
 }

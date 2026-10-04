@@ -249,12 +249,39 @@ otherwise until a real notification has been through the parser.**
 | Rocket | PASS | PASS — 3 positive + negatives | **NOT DONE** | **BLOCKED** |
 | Upay | PASS | PASS — 3 positive + negatives | **NOT DONE** | **BLOCKED** |
 
-Provider detection relies on the provider's name appearing in the message. This is
-pinned by `detection needs the provider name in the message`, which asserts that an
-unbranded message is **refused** rather than attributed to the wrong provider. No
-sender-ID mapping has been implemented, because the sending shortcodes are not
-publicly documented and guessing them would risk attributing one provider's money to
-another. Whether this matters in practice is exactly what L settles.
+Provider detection reads **both** the provider's name in the message body **and**
+the originating address it was sent from. That second signal was added because the
+first one alone is not how operators actually behave: a real 65 BDT bKash payment
+was delivered to this app on a seller's handset and refused, because bKash does not
+put its name in the body -- its own security guidance tells customers the
+notification comes *from bKash*, which is the originating address. See §L2.
+
+Sender matching is a normalised set lookup against a closed list per provider, never
+a `contains` search, because this field decides whose money a payment is. The list is
+deliberately incomplete and is a *second* signal, not a gate: a message that names
+its provider in the body still parses from an address that is not in the list, so
+adding a shortcode is never a prerequisite and a newly-appearing address cannot
+silently break detection.
+
+Both halves of that are pinned, so neither can be quietly undone:
+`an unbranded receipt from an unrecognised sender is still refused` and
+`a branded message is still read from an address not in the sender list`.
+
+## L2. Real bKash message — the ৳65 detection defect
+
+| # | Step | Expected | Result |
+| --- | --- | --- | --- |
+| L2.1 | Real bKash payment of **৳65** to a connected account | `parsed:bkash`, 65 BDT, reference extracted | **NOT DONE — no device available** |
+| L2.2 | Same payment, app closed | Native receiver still runs, candidate queued | **NOT DONE — no device available** |
+| L2.3 | Same payment, phone offline | Candidate queued natively, delivered on reconnect | **NOT DONE — no device available** |
+| L2.4 | Duplicate delivery of the same message | One payment, `duplicate: true` on the server | **NOT DONE — no device available** |
+
+The unit and fixture layers for this are in place: the `bkash-real-*` cases carry
+the structure of the real message with the transaction reference redacted, and
+`a real bKash receipt is detected from its sender, not a brand word` asserts the
+extracted amount, reference and payer. **Those prove the parser, not the phone.**
+Until L2.1 passes on a physical handset, SMS detection must not be reported as
+verified in production.
 
 ## M. Cross-platform regression
 

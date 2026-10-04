@@ -81,6 +81,18 @@ class SellflowSmsModule : Module() {
                 "queuedCandidates" to (queue?.count() ?: 0),
                 "oldestQueuedAt" to (queue?.oldestDetectedAt() ?: 0L),
                 "rejections" to (queue?.rejectionCounts() ?: emptyMap<String, Int>()),
+                // Listener counters. These are what turn "SellFlow did not detect my
+                // payment" into an answerable question: `broadcastsReceived == 0`
+                // means the platform never delivered an SMS to this app, which is a
+                // manifest/permission/battery problem, while a non-zero count with a
+                // `rejected:*` last outcome means the message arrived and this
+                // module declined it. Counts only -- no text, no sender address.
+                "broadcastsReceived" to (queue?.broadcastsReceived() ?: 0),
+                "messagesExamined" to (queue?.examinedCount() ?: 0),
+                "unreadableMessages" to (queue?.unreadableCount() ?: 0),
+                "lastMessageAt" to (queue?.lastMessageAt() ?: 0L),
+                "lastOutcome" to (queue?.lastOutcome() ?: "none"),
+                "droppedCandidates" to (queue?.droppedCount() ?: 0),
             )
         }
 
@@ -125,29 +137,77 @@ class SellflowSmsModule : Module() {
         }
 
         /**
+         * Which originating addresses this build recognises, per provider.
+         *
+         * Addresses are normalised to letters and digits, upper-cased, and held in
+         * a closed set per provider. Exposed because they are not publicly
+         * documented and therefore need confirming against a real handset: a
+         * developer who can see the expected list can check it against what the
+         * device actually received. Returning them is safe -- they are the
+         * provider's own published identities, not anyone's personal data.
+         */
+        AsyncFunction("getRecognisedSendersAsync") {
+            ProviderRegistry.adapters.associate { it.provider.id to it.senderIdentities.sorted() }
+        }
+
+        /**
+         * Clears the listener counters so the next real message can be observed from
+         * a known starting point.
+         *
+         * Development diagnostics only, and it deliberately does not clear the
+         * candidate queue: those rows are real money movements that have not reached
+         * the server yet.
+         */
+        AsyncFunction("resetListenerDiagnosticsAsync") {
+            queue().resetDiagnostics()
+            true
+        }
+
+        /**
          * Parses a message the developer pasted, without keeping it anywhere.
          *
          * The String lives as one call argument and one `SmsMessage`, and nothing
-         * writes it, logs it or sends it: the return value is either a normalised
-         * candidate or a rejection reason, and a hash for comparison against a
-         * real device. This exists so a real captured provider message can confirm
-         * or extend a parser -- see docs/device-setup.md -- and it deliberately
-         * has no path to the ingestion queue.
+         * writes it, logs it or sends it: the return value is a detection result, a
+         * normalised candidate or a rejection reason, and a hash for comparison
+         * against a real device. This exists so a real captured provider message can
+         * confirm or extend a parser -- see docs/device-setup.md -- and it
+         * deliberately has no path to the ingestion queue.
+         *
+         * **[sender] is the important argument.** Detection reads the originating
+         * address as well as the body, and a paste with no address can only ever
+         * exercise the body half of it -- which is exactly the half that already
+         * worked, and exactly how the real 65 BDT payment went undetected while
+         * every fixture passed. Letting the developer state the sender is what makes
+         * a paste reproduce the device.
+         *
+         * [detected] is reported separately from [outcome] so a refusal can say
+         * *which* provider claimed the message before saying what was wrong with
+         * it. Detection and parsing fail for different reasons and a developer
+         * needs to know which one happened.
+         *
+         * [sender] is nullable rather than defaulted because this is a lambda: a
+         * Kotlin lambda cannot carry a default parameter value, and `String?` is how
+         * an Expo module declares an optional argument.
          */
-        AsyncFunction("parseMessageForDiagnosticsAsync") { body: String ->
-            val sender = "diagnostics"
+        AsyncFunction("parseMessageForDiagnosticsAsync") { body: String, sender: String? ->
             val message = SmsMessage(
-                sender = sender,
+                sender = sender.orEmpty(),
                 messageBody = body,
                 receivedAt = System.currentTimeMillis(),
                 fingerprint = Fingerprint.sha256(body),
             )
+            val detected = ProviderRegistry.detect(message)?.provider?.id
+
             when (val outcome = ProviderRegistry.parse(message)) {
                 is ParseOutcome.Parsed -> mapOf(
+                    "detected" to detected,
+                    "outcome" to "parsed",
                     "candidate" to outcome.candidate.toEventMap(),
                     "fingerprint" to message.fingerprint,
                 )
                 is ParseOutcome.Rejected -> mapOf(
+                    "detected" to detected,
+                    "outcome" to "rejected",
                     "rejected" to outcome.reason.id,
                     "fingerprint" to message.fingerprint,
                 )

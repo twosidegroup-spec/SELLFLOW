@@ -139,11 +139,28 @@ interface ProviderAdapter {
     val parserVersion: Int
 
     /**
+     * Originating addresses this provider is known to send from, in the normalised
+     * form [SenderIdentity.normalize] produces.
+     *
+     * A closed set, matched by equality. It is a *second* signal for detection,
+     * not the only one: an operator that stamps its name on the message body is
+     * still recognised when its address is absent from here, because these
+     * addresses are not publicly documented and a new one may appear without
+     * notice. See [SenderIdentity] for why a real payment was missed without this.
+     */
+    val senderIdentities: Set<String>
+
+    /**
      * Whether this adapter recognises the message as its own.
      *
      * Cheap, and must not extract amounts: it answers "is this mine?", not "is
      * this valid?". Everything else is discarded before any parsing work starts,
      * so an unrelated message is never interpreted.
+     *
+     * Claiming a message is deliberately weaker than accepting it as a payment:
+     * [parse] still has to find both an amount and a transaction reference, so
+     * claiming costs a message nothing and buys a developer a precise refusal
+     * reason instead of "not a payment message".
      */
     fun canHandle(message: SmsMessage): Boolean
 
@@ -231,6 +248,16 @@ abstract class AbstractProviderAdapter : ProviderAdapter {
 
     protected fun reject(reason: RejectionReason): ParseOutcome.Rejected =
         ParseOutcome.Rejected(reason)
+
+    /**
+     * Whether the message arrived from an address this provider is known to use.
+     *
+     * Exposed to subclasses because detection needs it, and kept here so the
+     * matching rule itself has exactly one definition: a normalised set lookup
+     * (see [SenderIdentity]), never a substring search over the address.
+     */
+    protected fun senderIsProvider(message: SmsMessage): Boolean =
+        SenderIdentity.matches(message.sender, senderIdentities)
 
     private companion object {
         /**

@@ -22,7 +22,7 @@ class RocketAdapter : AbstractProviderAdapter() {
 
     override val provider: Provider = Provider.ROCKET
 
-    override val parserVersion: Int = 1
+    override val parserVersion: Int = 2
 
     override val transferAnchors: List<String> = listOf(
         "you have received",
@@ -34,6 +34,12 @@ class RocketAdapter : AbstractProviderAdapter() {
         "payment received",
     )
 
+    /**
+     * `ROCKET` is the alphanumeric sender ID; `16216` is Rocket's published contact
+     * shortcode. Same reasoning and same limits as [BkashAdapter.senderIdentities].
+     */
+    override val senderIdentities: Set<String> = setOf("ROCKET", "16216")
+
     private val BRAND = Regex("rocket", RegexOption.IGNORE_CASE)
 
     private val RECEIVED = Regex(
@@ -43,12 +49,19 @@ class RocketAdapter : AbstractProviderAdapter() {
 
     private val SENT = Regex("you have sent|you sent|cash out|cash-out|sent money", RegexOption.IGNORE_CASE)
 
+    /**
+     * Money arriving, from Rocket.
+     *
+     * "Cash out" is a withdrawal and is refused before the sender test, so
+     * recognising Rocket's address can never let a cash-out confirmation count as
+     * money arriving. A receive verb is required on both paths. See
+     * [BkashAdapter.canHandle] for the full ordering rationale.
+     */
     override fun canHandle(message: SmsMessage): Boolean {
         val text = message.messageBody
         if (MessageText.looksSuspicious(text)) return false
-        if (!BRAND.containsMatchIn(text)) return false
-        if (!RECEIVED.containsMatchIn(text)) return false
         if (SENT.containsMatchIn(text)) return false
-        return true
+        if (!RECEIVED.containsMatchIn(text)) return false
+        return BRAND.containsMatchIn(text) || senderIsProvider(message)
     }
 }

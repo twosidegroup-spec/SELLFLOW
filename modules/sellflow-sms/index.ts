@@ -20,6 +20,8 @@ import {
 } from 'react-native';
 
 import type {
+  DiagnosticsParseResult,
+  NativeProvider,
   PaymentCandidate,
   SmsListenerStatus,
 } from './types';
@@ -51,6 +53,20 @@ interface SellflowSmsNativeModule {
    */
   discardCandidateAsync(fingerprint: string): Promise<boolean>;
 
+  /** Which providers this build can parse, and at which parser version. */
+  getSupportedProvidersAsync(): Promise<Array<[NativeProvider, number]>>;
+
+  /**
+   * Originating addresses each provider is recognised by, normalised.
+   *
+   * Read-only, and worth confirming against a real handset because these
+   * addresses are not publicly documented.
+   */
+  getRecognisedSendersAsync(): Promise<Record<NativeProvider, string[]>>;
+
+  /** Clears the listener counters. Never clears the candidate queue. */
+  resetListenerDiagnosticsAsync(): Promise<boolean>;
+
   /**
    * Parses a pasted message without persisting or transmitting it.
    *
@@ -58,13 +74,14 @@ interface SellflowSmsNativeModule {
    * message can confirm or extend a parser. The String lives as one call argument
    * on the native side and is gone when the call returns. There is deliberately no
    * path from here to the ingestion queue.
+   *
+   * `sender` matters: detection reads the originating address as well as the body,
+   * so a paste without one only exercises half the rules.
    */
   parseMessageForDiagnosticsAsync(
     body: string,
-  ): Promise<
-    | { candidate: PaymentCandidate; fingerprint: string }
-    | { rejected: string; fingerprint: string }
-  >;
+    sender?: string,
+  ): Promise<DiagnosticsParseResult>;
 
   /** Raised when the receiver queues something, with JS already running. */
   addListener(
@@ -89,6 +106,12 @@ const UNSUPPORTED_STATUS: SmsListenerStatus = {
   queuedCandidates: 0,
   oldestQueuedAt: 0,
   rejections: {},
+  broadcastsReceived: 0,
+  messagesExamined: 0,
+  unreadableMessages: 0,
+  lastMessageAt: 0,
+  lastOutcome: 'none',
+  droppedCandidates: 0,
 };
 
 function requireNative(): SellflowSmsNativeModule {
@@ -148,16 +171,74 @@ export async function discardCandidate(fingerprint: string): Promise<boolean> {
 /**
  * Parses a pasted message with the real native parsers and returns only the
  * outcome. Nothing is kept.
+ *
+ * [sender] is passed straight through because provider detection reads the
+ * originating address as well as the message body. Omitting it exercises only the
+ * body half of the rules, which is the half that already worked.
  */
 export async function parseMessageForDiagnostics(
   body: string,
-): Promise<
-  | { candidate: PaymentCandidate; fingerprint: string }
-  | { rejected: string; fingerprint: string }
-  | null
-> {
+  sender?: string,
+): Promise<DiagnosticsParseResult | null> {
   if (!isNativeListenerAvailable) return null;
-  return requireNative().parseMessageForDiagnosticsAsync(body);
+  // Sent as an explicit empty string rather than left undefined: the native side
+  // declares the argument as `String?` because an Expo module lambda cannot carry
+  // a default value, and an empty address normalises to "matches no provider",
+  // which is exactly what "the caller did not say" should mean.
+  return requireNative().parseMessageForDiagnosticsAsync(body, sender ?? '');
+}
+
+/**
+ * Which providers this build can parse, and at which parser version.
+ *
+ * Surfaced so a developer reading a `parsed:bkash` outcome can confirm which
+ * parser version produced it.
+ */
+export async function getSupportedProviders(): Promise<
+  Array<{ provider: NativeProvider; parserVersion: number }>
+> {
+  if (!isNativeListenerAvailable) return [];
+  try {
+    const rows = await requireNative().getSupportedProvidersAsync();
+    return rows.map(([provider, parserVersion]) => ({ provider, parserVersion }));
+  } catch {
+    // Diagnostics must never be the thing that breaks a screen.
+    return [];
+  }
+}
+
+/**
+ * Originating addresses each provider is recognised by.
+ *
+ * These are not publicly documented, so this is how a developer checks the list
+ * against what a real handset actually received. The provider's own published
+ * identities only; never a personal address.
+ */
+export async function getRecognisedSenders(): Promise<
+  Record<string, string[]>
+> {
+  if (!isNativeListenerAvailable) return {};
+  try {
+    return await requireNative().getRecognisedSendersAsync();
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Zeroes the listener counters so the next real SMS can be watched from a known
+ * starting point.
+ *
+ * Development diagnostics only. The native side deliberately leaves the candidate
+ * queue alone: those rows are real payments that have not reached the server yet.
+ */
+export async function resetListenerDiagnostics(): Promise<boolean> {
+  if (!isNativeListenerAvailable) return false;
+  try {
+    return await requireNative().resetListenerDiagnosticsAsync();
+  } catch {
+    return false;
+  }
 }
 
 /**

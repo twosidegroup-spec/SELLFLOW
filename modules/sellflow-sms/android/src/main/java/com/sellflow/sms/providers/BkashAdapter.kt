@@ -13,17 +13,26 @@
  *   "You have received Tk 1,000.00 from 01712345678 on 12 Jan 2024 10:32 am.
  *    Your bKash balance Tk 15,000.00. TrxID: 8GHK9XYZ12A"
  *
- * **Fixture provenance: REPRESENTATIVE / UNVERIFIED.** See
- * modules/sellflow-sms/fixtures/README.md. The structure is the widely reported
- * one -- a receive verb, a currency amount, the paying number, the balance, and a
- * labelled TrxID -- but the exact wording is not publicly documented and must be
- * confirmed against a real captured message before release.
+ * **Detection reads the sender, because that is where bKash puts its name.**
+ *
+ * The wording above was originally the *only* thing detection had, and that was
+ * the defect that lost a real payment. A production bKash receipt does not name
+ * bKash in the body: bKash's own security guidance tells customers to check for
+ * the transaction SMS "from bKash", which is the originating address, while the
+ * body states only the receipt. So a real 65 BDT payment reached this module,
+ * matched neither [BRAND] nor anything else, was refused as
+ * `unsupported_provider`, and left the seller looking at a healthy screen with no
+ * payment. Detection now accepts either signal -- the brand in the body, or an
+ * address in [SENDER_IDENTITIES] -- and requires a receive verb in both cases.
+ *
+ * See `SenderIdentity` for why the sender test is a set lookup and not
+ * `contains("bKash")`, and `fixtures/README.md` for the provenance of the corpus.
  */
 class BkashAdapter : AbstractProviderAdapter() {
 
     override val provider: Provider = Provider.BKASH
 
-    override val parserVersion: Int = 1
+    override val parserVersion: Int = 2
 
     /**
      * The receive verb, most specific first. bKash leads with the receipt, so
@@ -40,6 +49,22 @@ class BkashAdapter : AbstractProviderAdapter() {
         "money received",
     )
 
+    /**
+     * Originating addresses observed from bKash, normalised.
+     *
+     * `BKASH` is the alphanumeric sender ID, which bKash's own security guidance
+     * names as the origin of its transaction SMS. `16247` is bKash's published
+     * contact shortcode and is included because a payment confirmation has been
+     * reported from it.
+     *
+     * Deliberately not exhaustive, and deliberately not load-bearing: these
+     * addresses are not published as a complete list, so an address missing from
+     * here still works as long as the operator branded the body. Adding one is a
+     * one-line change and carries no parsing risk, because a match still has to
+     * clear [RECEIVED], the OTP guard, and the amount and reference checks.
+     */
+    override val senderIdentities: Set<String> = setOf("BKASH", "16247")
+
     /** The provider's own name, in the spellings that appear in these messages. */
     private val BRAND = Regex("b\\s*kash|bkash", RegexOption.IGNORE_CASE)
 
@@ -55,18 +80,36 @@ class BkashAdapter : AbstractProviderAdapter() {
 
     private val SENT = Regex("you have sent|you sent|sent money|payment sent", RegexOption.IGNORE_CASE)
 
-override fun canHandle(message: SmsMessage): Boolean {
+    /**
+     * Money arriving, from bKash.
+     *
+     * Checked in this order deliberately:
+     *
+     *  1. A body no payment notification looks like is out before anything else.
+     *  2. A "sent" message is out before the sender test, so recognising bKash's
+     *     address can never let the *payer's* own confirmation count as the
+     *     seller's receipt. This is the check that keeps step 3 safe.
+     *  3. A receive verb is required on both paths. This is the corroboration that
+     *     makes a recognised sender sufficient to *claim* a message without being
+     *     sufficient to *accept* one: bKash also sends OTPs, promotions and
+     *     campaign blasts from this same address, and not one of those states a
+     *     receipt.
+     *  4. Either the body carries the brand, or the message came from a known
+     *     bKash address.
+     *
+     * Deliberately NOT checking for a currency token or an amount here. `canHandle`
+     * answers "is this bKash's message?", and a bKash receipt with no readable
+     * amount is still bKash's message -- it is just one this adapter must refuse,
+     * with a reason that tells a developer whether the amount or the wording is at
+     * fault. Folding validity into detection would make every malformation look
+     * like "not a payment message", which is how the original defect stayed
+     * invisible.
+     */
+    override fun canHandle(message: SmsMessage): Boolean {
         val text = message.messageBody
         if (MessageText.looksSuspicious(text)) return false
-        if (!BRAND.containsMatchIn(text)) return false
-        if (!RECEIVED.containsMatchIn(text)) return false
         if (SENT.containsMatchIn(text)) return false
-        // Deliberately NOT checking for a currency token or an amount here.
-        // `canHandle` answers "is this bKash's message?", and a bKash receipt with
-        // no readable amount is still bKash's message -- it is just one this
-        // adapter must refuse, with a reason that tells a developer whether the
-        // amount or the wording is at fault. Folding validity into detection would
-        // make every malformation look like "not a payment message".
-        return true
+        if (!RECEIVED.containsMatchIn(text)) return false
+        return BRAND.containsMatchIn(text) || senderIsProvider(message)
     }
 }

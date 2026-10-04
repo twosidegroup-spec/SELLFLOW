@@ -1,11 +1,12 @@
 {
   "provenance": {
-    "status": "REPRESENTATIVE / UNVERIFIED",
-    "what": "The bKash, Nagad, Rocket and Upay notification texts are NOT publicly documented. These fixtures encode the widely-reported STRUCTURE of a money-in notification -- a receive verb, a currency amount, the paying number, a resulting balance and a labelled transaction reference -- not any provider's exact current wording.",
-    "why": "A parser cannot be written against a format nobody published, and shipping these as if they were captured would be a false claim. So they are labelled, and closing the gap is an explicit device-QA step.",
-    "how_to_close_the_gap": "Send a real payment to a connected account, then in the app open Payments -> Automatic detection -> Parser check (development only) and paste the real message. If the parser refuses it or extracts the wrong field, that is the signal to extend the adapter and add the real message to this file with a captured: true flag.",
+    "status": "MIXED PROVENANCE -- representative, plus structures taken from a real captured bKash payment. Per-case `captured` flags say which is which.",
+    "what": "The bKash, Nagad, Rocket and Upay notification texts are NOT publicly documented. Most of these fixtures encode the widely-reported STRUCTURE of a money-in notification -- a receive verb, a currency amount, the paying number, a resulting balance and a labelled transaction reference -- rather than any provider's exact current wording. The four `bkash-real-*` cases are different: their structure was taken from a real 65 BDT bKash payment that this app received on a seller's handset and refused. Those are the cases that would have caught the defect.",
+    "why": "A parser cannot be written against a format nobody published, and shipping invented fixtures as if they were captured would be a false claim. Equally, keeping a fixture that contradicts observed reality because it is prettier is how a real 65 BDT payment gets lost while 27 tests pass. So both are labelled, per case.",
+    "real_capture_note": "The real message was transcribed with its transaction reference REPLACED and its payer number replaced with a placeholder. The amount is left at 65 because the amount is not the sensitive part -- the transaction reference is, and one captured reference must not become a permanent fixture. The wording, the absence of any brand word in the body, the sender identity and the no-space currency token are preserved exactly, because those are what caused the failure.",
+    "how_to_close_the_gap": "Send a real payment to a connected account, then in the app open Payments -> Automatic detection -> SMS automation diagnostics, reset the counters, and watch. `broadcastsReceived == 0` means Android never delivered the SMS to SellFlow at all (manifest, permission, or a vendor battery restriction). A non-zero count with a `rejected:*` last outcome means the message arrived and the parser declined it. Paste the real message into the parser check with the sender the device reported to get the extracted fields and the refusal reason. If either disagrees with reality, extend the adapter and add a case here with `captured: true`.",
     "not_covered_here": "Duplicate transactions, replay, matching and settlement are not parser concerns. They are covered by scripts/sms-adapter.test.mjs and supabase/test/verify_payment_sms_adapter.sql.",
-    "reviewed": "2026-10-03"
+    "reviewed": "2026-10-04"
   },
   "cases": [
     {
@@ -488,6 +489,65 @@
         "reason": "unsupported_provider"
       },
       "note": "A bank credit, not an MFS transfer. SellFlow only reconciles MFS notifications because those are the ones an MFS account can receive."
+    },
+    {
+      "id": "bkash-real-65-tk-no-space-unbranded-body",
+      "captured": true,
+      "sender": "bKash",
+      "body": "You have received Tk65.00 from 01712345678. TrxID: 9REDACT6501",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "bkash",
+        "amount": 65,
+        "transactionId": "9REDACT6501",
+        "senderAccount": "01712345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "THE REGRESSION. Structure taken from a real 65 BDT bKash payment that this app received, saw, and refused on a seller's handset. Two facts matter and both were wrong in the fixtures above: the body does NOT contain the word bKash -- bKash's own security guidance tells customers the notification comes FROM bKash, which is the originating address -- and the amount is written with no space after the currency token, Tk65.00. The reference is redacted and the number is a placeholder; the structure is the part that caused the failure."
+    },
+    {
+      "id": "bkash-real-65-shortcode-sender",
+      "captured": true,
+      "sender": "16247",
+      "body": "You have received Tk65.00 from 01712345678. TrxID: 9REDACT6501",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "bkash",
+        "amount": 65,
+        "transactionId": "9REDACT6501",
+        "senderAccount": "01712345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "The same payment arriving from bKash's published contact shortcode rather than its alphanumeric sender ID. Detection must not depend on which of the two a given handset or operator happens to use."
+    },
+    {
+      "id": "bkash-real-65-bdt-wording",
+      "captured": true,
+      "sender": "BKASH",
+      "body": "You have received BDT 65.00 from 01712345678. Balance BDT 1,500.00. TrxID: 9REDACT6502",
+      "expect": {
+        "outcome": "parsed",
+        "provider": "bkash",
+        "amount": 65,
+        "transactionId": "9REDACT6502",
+        "senderAccount": "01712345678",
+        "receiverAccount": null,
+        "transactionTimestamp": null
+      },
+      "note": "The same payment in BDT rather than Tk, with the sender upper-cased as some handsets render it. Proves the amount anchor is not tied to one currency spelling and that sender matching is case-insensitive."
+    },
+    {
+      "id": "bkash-real-65-unknown-sender-still-refused",
+      "captured": true,
+      "sender": "01799000111",
+      "body": "You have received Tk65.00 from 01712345678. TrxID: 9REDACT6503",
+      "expect": {
+        "outcome": "rejected",
+        "reason": "unsupported_provider"
+      },
+      "note": "The security half of the fix, and the case that must never be relaxed. The identical body from an address bKash does not use, with no brand in the text, must still be refused: a recognised sender is what makes the unbranded body acceptable, so an unrecognised sender must put it back beyond reach. Guards against anyone 'fixing' this later with a contains-bKash rule."
     }
   ]
 }

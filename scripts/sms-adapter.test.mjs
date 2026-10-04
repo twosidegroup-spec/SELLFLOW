@@ -130,13 +130,66 @@ beforeEach(() => {
 });
 
 describe('sms adapter :: fixture corpus', () => {
-  test('the corpus is explicitly labelled unverified', () => {
+  test('the corpus is explicitly labelled, and names its real capture', () => {
     // The claim that a parser is real-world verified is a lie until a message has
     // actually been captured. That label living in the data file means the file
     // cannot be read without reading the caveat.
-    assert.match(corpus.provenance.status, /REPRESENTATIVE|UNVERIFIED/);
+    assert.match(corpus.provenance.status, /REPRESENTATIVE|UNVERIFIED|MIXED/);
     assert.ok(corpus.provenance.how_to_close_the_gap.length > 40);
     assert.ok(corpus.cases.length >= 20, 'the corpus must be substantial');
+
+    // Mixed provenance means the claim has to be per case, not per file.
+    const captured = corpus.cases.filter((c) => c.captured === true);
+    assert.ok(
+      captured.length > 0,
+      'a real payment was refused in the field; the corpus must carry its structure',
+    );
+
+    // And a captured case must carry a reference that is marked synthetic. One
+    // personal test payment's real TrxID must never become a permanent production
+    // fixture: fixtures ship to every device and are read by every future developer,
+    // and a real reference is the one string in this feature that identifies a real
+    // person's money movement. The marker is the convention this test enforces.
+    for (const c of captured) {
+      // A rejected case has no reference to leak; only a parsed one carries one.
+      const reference = c.expect.transactionId;
+      if (!reference) continue;
+      assert.match(
+        reference,
+        /REDACT|FAKE|EXAMPLE|SANITISED|SANITIZED/i,
+        `${c.id}: a captured case must mark its transaction reference as synthetic, not carry the real one`,
+      );
+    }
+  });
+
+  test('a captured real payment is pinned as a regression', () => {
+    // The 65 BDT payment that arrived on a seller's handset and was refused. Its
+    // structure is the whole reason this suite exists a second time: two facts were
+    // wrong, the body carried no brand word, and the amount was written Tk65.00.
+    const cases = corpus.cases.filter((c) => c.id.startsWith('bkash-real-'));
+    assert.ok(cases.length >= 4, `expected the bkash-real-* regression set, found ${cases.length}`);
+
+    const primary = cases.find((c) => c.id === 'bkash-real-65-tk-no-space-unbranded-body');
+    assert.ok(primary, 'the Tk65.00 unbranded-body case must exist');
+    assert.equal(primary.sender, 'bKash');
+    assert.equal(
+      primary.body.includes('bKash'),
+      false,
+      'the regression body must NOT contain the brand word -- that absence is the bug',
+    );
+    assert.match(primary.body, /Tk65\.00/, 'the no-space currency token is part of the regression');
+    assert.equal(primary.expect.outcome, 'parsed');
+    assert.equal(primary.expect.provider, 'bkash');
+    assert.equal(primary.expect.amount, 65);
+
+    // The same body from an address bKash does not use must still be refused. This
+    // is the assertion that stops anyone re-fixing detection with a contains-bKash
+    // rule, which would settle any SMS that merely names the provider.
+    const refused = cases.find((c) => c.id === 'bkash-real-65-unknown-sender-still-refused');
+    assert.ok(refused, 'the unknown-sender negative must exist');
+    assert.equal(refused.body, primary.body.replace('9REDACT6501', '9REDACT6503'));
+    assert.equal(refused.expect.outcome, 'rejected');
+    assert.equal(refused.expect.reason, 'unsupported_provider');
   });
 
   test('every provider has a positive payment case', () => {

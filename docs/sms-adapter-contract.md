@@ -133,19 +133,28 @@ That is now in place:
 | Layer | Where | Covers |
 | --- | --- | --- |
 | Parsers | `modules/sellflow-sms/android/src/test/.../ProviderParserTest.kt` | The whole fixture corpus, plus the refusals that matter |
-| Corpus | `modules/sellflow-sms/android/src/test/resources/fixtures/payment-sms.json` | 36 representative cases, provenance labelled in-file |
+| Corpus | `modules/sellflow-sms/android/src/test/resources/fixtures/payment-sms.json` | 40 cases, mixed provenance labelled per case in-file |
 | Client half | `scripts/sms-adapter.test.mjs` | Normalisation, duplicates, offline, retry, permission, security |
 | Engine half | `supabase/test/verify_payment_sms_adapter.sql` | Native-shaped arguments through the engine to `record_payment` and finance |
 | Boundary | `scripts/payment-boundary.test.mjs` | What the adapter may not do |
 
-**The parser suite has not been executed.** It requires a JDK and an Android SDK,
-which the authoring environment does not have. Everything else in that table runs
-and passes today.
+**The parser suite cannot be executed in this environment.** It needs a JDK 17+ and
+an Android SDK; the machine this change was made on has neither (only a Java 8 JRE
+with no `javac`, no Gradle, no Android SDK and no `adb`). Everything else in that
+table runs and passes today. The Kotlin changes in this change set are therefore
+**unverified by compilation** — they need
+`cd android && ./gradlew :sellflow-sms:testDebugUnitTest` on a machine with a JDK
+before they can be called green. That is called out here rather than buried because
+the previous version of this file made the opposite claim, and the whole defect this
+change fixes was a green suite standing in for a real device.
 
-The fixtures are **representative, not captured.** The provider notification texts
-are not publicly documented, so a green parser run does not mean any parser has
-seen a real payment. `modules/sellflow-sms/fixtures/README.md` explains the gap and
-how to close it; `docs/device-qa-checklist.md` §L is the gate.
+The fixtures are **mixed provenance, labelled per case.** Most are representative:
+the provider notification texts are not publicly documented. The `bkash-real-*`
+cases are different — their structure came from a real 65 BDT payment that this app
+received on a seller's handset and refused, with the transaction reference redacted.
+So a green parser run means the parser handles the structure that actually failed,
+which is strictly more than it meant before and still not the same as a real payment
+completing the chain. `docs/device-qa-checklist.md` §L2 is the gate.
 
 ## What Phase 2 decided
 

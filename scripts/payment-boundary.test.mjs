@@ -594,9 +594,43 @@ describe('payment boundary', () => {
     );
 
     const screen = read(join(SRC, 'app', '(app)', 'payment-sms.tsx'));
-    assert.ok(
-      screen.includes('{__DEV__ ? <DiagnosticsPanel /> : null}'),
+    // Matched as a shape rather than a literal so the guard survives the panel
+    // gaining or losing a prop. The security property is all three parts: it is a
+    // `__DEV__ ? ... : null` ternary, the truthy branch is the panel itself, and the
+    // false branch is null. A raw message body must have no route into a production
+    // bundle, so this cannot be relaxed to "it renders somewhere in development".
+    assert.match(
+      screen,
+      /\{__DEV__\s*\?\s*<DiagnosticsPanel\b[^>]*\/>\s*:\s*null\}/,
       'the diagnostics panel must only render in a development build',
+    );
+
+    // Exactly one caller, and it is the dev-only screen.
+    //
+    // The individual guarantees above would each still hold if a second caller
+    // appeared somewhere that could persist its result -- a cache, an analytics
+    // breadcrumb, an error report. A pasted message body is the one piece of data in
+    // this feature that a human can put into it, so the surface that accepts one has
+    // to stay a single, development-gated screen rather than a reusable helper.
+    const callers = walkAll(SRC).filter((file) => {
+      const relativePath = relative(REPO, file).replace(/\\/g, '/');
+      // The module that *defines* runDiagnostics is not a caller.
+      if (relativePath === 'src/features/payments/sms/diagnostics.ts') return false;
+      return /\b(runDiagnostics|parseMessageForDiagnostics)\b/.test(readFileSync(file, 'utf8'));
+    });
+    assert.deepEqual(
+      callers.map((file) => relative(REPO, file).replace(/\\/g, '/')),
+      ['src/app/(app)/payment-sms.tsx'],
+      'only the development diagnostics screen may parse a pasted message',
+    );
+
+    // And the dev panel must clear what it was given, so the raw text cannot be
+    // screenshotted out of the field after the parse has read it.
+    const parseAt = screen.indexOf('runDiagnostics({');
+    const clearAt = screen.indexOf("setText('')");
+    assert.ok(
+      parseAt > -1 && clearAt > parseAt,
+      'the parser check must clear the pasted message once it has been parsed',
     );
   });
 

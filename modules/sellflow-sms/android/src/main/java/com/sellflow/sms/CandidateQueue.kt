@@ -21,6 +21,13 @@ import org.json.JSONObject
  * anything the payment contract would not have sent anyway. See
  * docs/sms-adapter-contract.md, which forbids storing the body.
  *
+ * The listener counters below the queue are held here too, in the same private
+ * preferences file, and obey the same rule: they are integers and closed-vocabulary
+ * tokens. They exist because an unrecognised message leaves no trace by design, and
+ * a real payment lost inside the parser was therefore indistinguishable from a
+ * payment that never arrived. Counting the stages is what makes that distinction
+ * answerable on a real handset.
+ *
  * Writes use `commit()` rather than `apply()`. A broadcast receiver can be torn
  * down the instant `onReceive` returns, so an asynchronous write would lose
  * exactly the payments the seller was not watching for.
@@ -113,6 +120,82 @@ class CandidateQueue(context: Context) {
 
     /** How many candidates were dropped because the queue was full. */
     fun droppedCount(): Int = prefs.getInt(KEY_DROPPED, 0)
+
+    // ------------------------------------------------------------- diagnostics
+
+    /**
+     * Records that the receiver was invoked for an inbound SMS broadcast.
+     *
+     * This is the counter that separates the two failures a seller cannot
+     * otherwise tell apart. `broadcasts == 0` means the platform never delivered
+     * anything, so the problem is the manifest, the permission or a vendor battery
+     * restriction. `broadcasts > 0` with `examined == 0` means Android delivered
+     * the broadcast and the payload could not be read. Neither is visible anywhere
+     * else: an unrecognised message leaves no trace at all by design, so a real
+     * payment lost to a detection or parsing fault used to be indistinguishable
+     * from a payment that never arrived.
+     *
+     * Counts only. No sender, no body, no length.
+     */
+    fun recordBroadcast() {
+        prefs.edit()
+            .putInt(KEY_BROADCASTS, broadcastsReceived() + 1)
+            .putLong(KEY_LAST_MESSAGE_AT, System.currentTimeMillis())
+            .commit()
+    }
+
+    /** Records one message read out of the broadcast, before any parsing. */
+    fun recordExamined() {
+        prefs.edit()
+            .putInt(KEY_EXAMINED, examinedCount() + 1)
+            .putLong(KEY_LAST_MESSAGE_AT, System.currentTimeMillis())
+            .commit()
+    }
+
+    /**
+     * Records a message whose sender or body Android would not hand over.
+     *
+     * Previously this was a bare `continue`, which made a delivery-format problem
+     * on one handset indistinguishable from "no SMS arrived". Counting it is the
+     * whole fix; the message itself is still not retained.
+     */
+    fun recordUnreadable() {
+        prefs.edit().putInt(KEY_UNREADABLE, unreadableCount() + 1).commit()
+    }
+
+    /**
+     * Records what the last examined message turned into, as a sanitized token.
+     *
+     * `parsed:bkash`, `rejected:unsupported_provider`, or `unreadable`. Built only
+     * from the provider id and the rejection reason id, both of which are closed
+     * vocabularies in this module, so this cannot carry anything a message said.
+     */
+    fun recordOutcome(token: String) {
+        prefs.edit().putString(KEY_LAST_OUTCOME, token).commit()
+    }
+
+    fun broadcastsReceived(): Int = prefs.getInt(KEY_BROADCASTS, 0)
+
+    fun examinedCount(): Int = prefs.getInt(KEY_EXAMINED, 0)
+
+    fun unreadableCount(): Int = prefs.getInt(KEY_UNREADABLE, 0)
+
+    /** Epoch millis of the last broadcast or examined message, or 0. */
+    fun lastMessageAt(): Long = prefs.getLong(KEY_LAST_MESSAGE_AT, 0L)
+
+    /** The last sanitized outcome token, or "none". */
+    fun lastOutcome(): String = prefs.getString(KEY_LAST_OUTCOME, "none") ?: "none"
+
+    /** Clears the counters. Development diagnostics only. */
+    fun resetDiagnostics() {
+        prefs.edit()
+            .remove(KEY_BROADCASTS)
+            .remove(KEY_EXAMINED)
+            .remove(KEY_UNREADABLE)
+            .remove(KEY_LAST_MESSAGE_AT)
+            .remove(KEY_LAST_OUTCOME)
+            .commit()
+    }
 
     // ---------------------------------------------------------------- internals
 
@@ -220,6 +303,11 @@ class CandidateQueue(context: Context) {
         const val KEY_ROWS = "candidates"
         const val KEY_REJECTIONS = "rejections"
         const val KEY_DROPPED = "dropped"
+        const val KEY_BROADCASTS = "broadcasts"
+        const val KEY_EXAMINED = "examined"
+        const val KEY_UNREADABLE = "unreadable"
+        const val KEY_LAST_MESSAGE_AT = "lastMessageAt"
+        const val KEY_LAST_OUTCOME = "lastOutcome"
 
         const val KEY_PROVIDER = "provider"
         const val KEY_TRANSACTION_ID = "transactionId"

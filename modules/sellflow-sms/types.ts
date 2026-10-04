@@ -90,4 +90,57 @@ export interface SmsListenerStatus {
   oldestQueuedAt: number;
   /** Non-settling parse outcomes, by reason. No message text is ever kept. */
   rejections: Record<string, number>;
+
+  // ------------------------------------------------------------------ counters
+  //
+  // These exist because the two failure modes below are indistinguishable from
+  // outside the app, and only one of them is a bug in this feature:
+  //
+  //   broadcastsReceived === 0  -> the platform never delivered an SMS to
+  //                                SellFlow. Manifest, permission, or a vendor
+  //                                battery restriction. Nothing to do with parsing.
+  //   broadcastsReceived > 0    -> Android delivered it. If `lastOutcome` starts
+  //                                with `rejected:`, this module read the message
+  //                                and declined it, and the reason says why.
+  //
+  // Counts and one closed-vocabulary token. No text, no sender address.
+
+  /** Times the receiver was invoked for an SMS broadcast. */
+  broadcastsReceived: number;
+  /** Messages successfully read out of those broadcasts. */
+  messagesExamined: number;
+  /** Broadcasts or messages Android delivered but would not hand over in full. */
+  unreadableMessages: number;
+  /** Epoch millis of the last broadcast or examined message, or 0. */
+  lastMessageAt: number;
+  /**
+   * What the last examined message became.
+   *
+   * `parsed:<provider>` (e.g. `parsed:bkash`), `rejected:<reason>`, `unreadable`,
+   * or `none`. Built only from enum ids, so it cannot carry message content.
+   */
+  lastOutcome: string;
+  /** Candidates dropped because the native queue was full. */
+  droppedCandidates: number;
 }
+
+/**
+ * The outcome of parsing a message a developer pasted, split by stage.
+ *
+ * `detected` is separate from `outcome` on purpose: a message can be correctly
+ * attributed to bKash and still be refused for a missing amount, and a developer
+ * debugging a real handset needs to know which of those two happened.
+ */
+export type DiagnosticsParseResult =
+  | {
+      detected: NativeProvider | null;
+      outcome: 'parsed';
+      candidate: PaymentCandidate;
+      fingerprint: string;
+    }
+  | {
+      detected: NativeProvider | null;
+      outcome: 'rejected';
+      rejected: SmsRejectionReason;
+      fingerprint: string;
+    };

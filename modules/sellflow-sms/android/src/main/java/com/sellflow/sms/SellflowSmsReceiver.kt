@@ -29,26 +29,51 @@ import com.sellflow.sms.providers.SmsMessage
  *  - **The body is not stored.** [message] holds it for one call to
  *    [ProviderRegistry.parse] and is then unreachable. It is not written to the
  *    queue, not logged, not attached to an exception and not sent anywhere.
- *  - **An unrecognised message leaves no trace.** Not even a row saying one
- *    arrived. A seller's personal messages are none of SellFlow's business.
+ *  - **An unrecognised message leaves no trace beyond a count.** Not a row saying
+ *    one arrived, and not its text. A seller's personal messages are none of
+ *    SellFlow's business.
  *  - **A parse crash cannot lose a payment silently.** [ProviderRegistry.parse]
  *    never throws; a failure is counted, and the count is visible in
  *    diagnostics.
+ *  - **Neither can a delivery problem.** Every path that used to `return` quietly
+ *    counts itself instead. `broadcasts == 0` means Android never delivered an SMS
+ *    to this app at all -- manifest, permission, or a vendor battery restriction --
+ *    which is a completely different fault from a message this module read and
+ *    refused, and the seller cannot tell them apart from the outside. Only
+ *    integers and closed-vocabulary tokens are recorded; the sender address is not.
  */
 class SellflowSmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
 
+        val queue = CandidateQueue(context)
+        queue.recordBroadcast()
+
         val parts = runCatching { Telephony.Sms.Intents.getMessagesFromIntent(intent) }
             .getOrNull()
-            ?: return
+            ?.filterNotNull()
+            .orEmpty()
 
-        val queue = CandidateQueue(context)
+        if (parts.isEmpty()) {
+            // Android delivered the broadcast but no readable part came with it.
+            // Counted rather than dropped: this is the one delivery shape that looks
+            // exactly like "nothing arrived" from inside the app.
+            queue.recordUnreadable()
+            queue.recordOutcome(OUTCOME_UNREADABLE)
+            return
+        }
 
         for (part in parts) {
-            val sender = part.displayOriginatingAddress ?: part.originatingAddress ?: continue
-            val body = part.displayMessageBody ?: part.messageBody ?: continue
+            val sender = part.displayOriginatingAddress ?: part.originatingAddress
+            val body = part.displayMessageBody ?: part.messageBody
+            if (sender == null || body == null) {
+                queue.recordUnreadable()
+                queue.recordOutcome(OUTCOME_UNREADABLE)
+                continue
+            }
+
+            queue.recordExamined()
             val receivedAt =
                 part.timestampMillis.takeIf { it > 0L } ?: System.currentTimeMillis()
 
@@ -62,9 +87,13 @@ class SellflowSmsReceiver : BroadcastReceiver() {
             when (val outcome = ProviderRegistry.parse(message)) {
                 is ParseOutcome.Parsed -> {
                     queue.enqueue(outcome.candidate)
+                    queue.recordOutcome(OUTCOME_PARSED_PREFIX + outcome.candidate.provider.id)
                     notifyJavaScriptIfRunning(outcome.candidate.fingerprint)
                 }
-                is ParseOutcome.Rejected -> queue.recordRejection(outcome.reason.id)
+                is ParseOutcome.Rejected -> {
+                    queue.recordRejection(outcome.reason.id)
+                    queue.recordOutcome(OUTCOME_REJECTED_PREFIX + outcome.reason.id)
+                }
             }
             // `message` goes out of scope here. Nothing above kept its text.
         }
@@ -102,3 +131,15 @@ internal fun isReceiverActive(context: Context): Boolean = runCatching {
     val info = context.packageManager.getReceiverInfo(component, 0)
     info.enabled && info.exported
 }.getOrDefault(false)
+
+/**
+ * The closed vocabulary of [CandidateQueue.recordOutcome].
+ *
+ * Assembled only from a [com.sellflow.sms.providers.Provider] id and a
+ * [com.sellflow.sms.providers.RejectionReason] id, so the recorded token cannot
+ * carry any part of a message even though it is the only string this module
+ * persists about one.
+ */
+private const val OUTCOME_PARSED_PREFIX = "parsed:"
+private const val OUTCOME_REJECTED_PREFIX = "rejected:"
+private const val OUTCOME_UNREADABLE = "unreadable"
