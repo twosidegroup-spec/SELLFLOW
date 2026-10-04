@@ -10,10 +10,15 @@
  *
  * Tab state is lifted into a store so a screen can switch tab and then push a
  * detail screen, which the imperative `router` API cannot express on its own.
+ *
+ * **This bar is the phone layout.** On a viewport wide enough for a sidebar,
+ * `WebShell` takes over and this bar is not rendered at all -- see
+ * `src/components/web/WebShell.tsx`. Both are driven by the same `useViewport`
+ * breakpoint, so there is no width at which a seller sees both, or neither.
  */
 
 import { create } from 'zustand';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -66,6 +71,28 @@ const ORDER: string[] = ['index', 'orders', 'products', 'customers', 'more'];
 export default function TabsLayout() {
   const { colors } = useTheme();
 
+  /*
+   * The bottom tab bar is the phone layout and is not rendered on web at all.
+   *
+   * `WebShell` draws the web navigation -- a sidebar, or a top bar and drawer when
+   * the window is narrow -- and having both on screen at once is what made the
+   * dashboard read as a phone app with a website bolted on. Returning `null` rather
+   * than hiding it with a style keeps it out of the accessibility tree too, so a
+   * screen reader is not offered five unlabelled tabs above the real navigation.
+   */
+  const isWeb = Platform.OS === 'web';
+
+  /*
+   * Every tab scene renders into here.
+   *
+   * The desktop shell lives one level up, in `(app)/_layout.tsx`, because it has
+   * to wrap the whole authenticated stack. Anchoring it here meant every screen
+   * pushed outside the tabs -- Finance, Analytics, Settings, the payment screens --
+   * rendered full-bleed with no sidebar and no way to navigate except the browser
+   * back button, which is the desktop failure the shell exists to prevent.
+   *
+   * So this layout is now only ever the phone layout, and the tab bar stays.
+   */
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/*
@@ -82,7 +109,7 @@ export default function TabsLayout() {
       <ConnectionBanner />
 
       <Tabs
-        tabBar={(props) => <SellFlowTabBar {...props} />}
+        tabBar={isWeb ? () => null : (props) => <SellFlowTabBar {...props} />}
         screenOptions={{
           headerShown: false,
           sceneStyle: { backgroundColor: colors.background },

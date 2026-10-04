@@ -21,10 +21,25 @@ export function ensureDirs() {
   mkdirSync(SHOTS, { recursive: true });
 }
 
-export async function launch({ width = 390, height = 844, scale = 2 } = {}) {
-  rmSync(PROFILE, { recursive: true, force: true });
+export async function launch({ width = 390, height = 844, scale = 2, headless = true, reuseProfile = false } = {}) {
+  /*
+   * `reuseProfile: false` wipes the profile first, which is what every automated
+   * run wants: a stale session or a stale service worker from a previous run
+   * silently changes what the page does.
+   *
+   * `reuseProfile: true` keeps it, which is what an interactive run wants. The
+   * signed-in dashboard audit launches a visible window and has a human type the
+   * password, so the session has to outlive the browser process -- and the
+   * password has to reach the browser without passing through any script.
+   *
+   * `headless: false` opens a real window for the same reason: nobody can type a
+   * password into a window that is not on screen.
+   */
+  if (!reuseProfile) rmSync(PROFILE, { recursive: true, force: true });
+  else mkdirSync(PROFILE, { recursive: true });
+
   const child = spawn(CHROME, [
-    '--headless=new',
+    ...(headless ? ['--headless=new'] : []),
     `--remote-debugging-port=${PORT}`,
     `--user-data-dir=${PROFILE}`,
     `--window-size=${width},${height}`,

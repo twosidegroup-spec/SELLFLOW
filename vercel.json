@@ -6,6 +6,33 @@
   "installCommand": null,
   "trailingSlash": false,
   "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/login",
+      "destination": "/app/sign-in",
+      "permanent": false
+    },
+    {
+      "source": "/register",
+      "destination": "/app/register",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/app",
+      "permanent": false
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/app",
+      "destination": "/app/index.html"
+    },
+    {
+      "source": "/app/:path*",
+      "destination": "/app/index.html"
+    }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",
@@ -24,6 +51,35 @@
       "headers": [
         { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
         { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/app/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/app/_expo/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/app/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" }
       ]
     }
   ]

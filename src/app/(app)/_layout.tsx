@@ -12,13 +12,27 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState, Platform, type AppStateStatus } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
 
 import { ErrorState, LoadingState } from '@/components/ui';
+import { WebShell } from '@/components/web/WebShell';
 import { useSmsListener } from '@/features/payments/sms/hooks';
 import { useLock } from '@/store/lock';
 import { useSession } from '@/store/session';
+
+/*
+ * Page transitions are a native affordance and are switched off on web.
+ *
+ * A slide is meaningful on a phone, where the screen you came from is still
+ * physically beside the one you are going to. In a browser it is not: the previous
+ * page is gone and is reachable through Back, so animating the new one in only
+ * delays it and implies a stack the web build does not have. `none` is also what
+ * makes deep links and refreshes land instantly instead of after 220ms of nothing.
+ */
+const isWeb = Platform.OS === 'web';
+const pushAnimation = isWeb ? 'none' : 'slide_from_right';
+const modalAnimation = isWeb ? 'none' : 'slide_from_bottom';
 
 export default function AppLayout() {
   const status = useSession((state) => state.status);
@@ -107,39 +121,52 @@ export default function AppLayout() {
   if (!isLockReady) return <LoadingState />;
   if (hasPasscode && isLocked) return <Redirect href="/passcode" />;
 
+  /*
+   * The desktop shell wraps the whole stack, not just the tabs.
+   *
+   * Anchoring it to the tab layout looked right and was wrong: every screen pushed
+   * above the tabs -- Finance, Analytics, Expenses, Notifications, all of Settings,
+   * and the payment screens -- rendered full-bleed with no sidebar and no way to
+   * move except the browser back button. On a desktop that is a dead end.
+   *
+   * `WebShell` returns its children untouched below the breakpoint, so the phone
+   * and tablet layouts are unchanged by any of this.
+   */
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        animation: 'slide_from_right',
-        animationDuration: 220,
-      }}
-    >
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="analytics" options={{ animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="finance" options={{ animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="order/new" options={{ animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="order/[id]" />
-      <Stack.Screen name="product/new" options={{ animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="product/[id]" />
-      <Stack.Screen name="customer/new" options={{ animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="customer/[id]" />
-      <Stack.Screen name="expense/index" />
-      <Stack.Screen name="expense/new" options={{ animation: 'slide_from_bottom' }} />
-      {/* Payment detection engine. The hub and the queue are screens you read;
-          the two forms slide from the bottom like every other form here. */}
-      <Stack.Screen name="payments" />
-      <Stack.Screen name="payment-review" />
-      <Stack.Screen name="payment-sms" />
-      <Stack.Screen name="payment-account/new" options={{ animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="payment-intent/new" options={{ animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="notifications" options={{ animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="settings/business" />
-      <Stack.Screen name="settings/account" />
-      <Stack.Screen name="settings/appearance" />
-      <Stack.Screen name="settings/notifications" />
-      <Stack.Screen name="settings/data" />
-      <Stack.Screen name="settings/support" />
-    </Stack>
+    <WebShell>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: pushAnimation,
+          animationDuration: 220,
+        }}
+      >
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="analytics" options={{ animation: modalAnimation }} />
+        <Stack.Screen name="finance" options={{ animation: modalAnimation }} />
+        <Stack.Screen name="order/new" options={{ animation: modalAnimation }} />
+        <Stack.Screen name="order/[id]" />
+        <Stack.Screen name="product/new" options={{ animation: modalAnimation }} />
+        <Stack.Screen name="product/[id]" />
+        <Stack.Screen name="customer/new" options={{ animation: modalAnimation }} />
+        <Stack.Screen name="customer/[id]" />
+        <Stack.Screen name="expense/index" />
+        <Stack.Screen name="expense/new" options={{ animation: modalAnimation }} />
+        {/* Payment detection engine. The hub and the queue are screens you read;
+            the two forms slide from the bottom like every other form here. */}
+        <Stack.Screen name="payments" />
+        <Stack.Screen name="payment-review" />
+        <Stack.Screen name="payment-sms" />
+        <Stack.Screen name="payment-account/new" options={{ animation: modalAnimation }} />
+        <Stack.Screen name="payment-intent/new" options={{ animation: modalAnimation }} />
+        <Stack.Screen name="notifications" options={{ animation: modalAnimation }} />
+        <Stack.Screen name="settings/business" />
+        <Stack.Screen name="settings/account" />
+        <Stack.Screen name="settings/appearance" />
+        <Stack.Screen name="settings/notifications" />
+        <Stack.Screen name="settings/data" />
+        <Stack.Screen name="settings/support" />
+      </Stack>
+    </WebShell>
   );
 }

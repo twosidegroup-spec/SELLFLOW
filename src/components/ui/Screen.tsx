@@ -54,6 +54,25 @@ export interface ScreenProps {
   keyboardShouldPersistTaps?: 'always' | 'never' | 'handled';
 }
 
+/**
+ * Widest a screen's content is allowed to get on web.
+ *
+ * Every screen inherits this, which is the point. Laying it out per screen meant
+ * thirty-odd chances to forget, and the ones that did forget were the reason the
+ * dashboard read as a stretched phone app: a single card or a single-column form
+ * spanning 1900px of monitor. Centred and capped, the same components sit where a
+ * website puts them.
+ *
+ * `alignSelf` is required alongside `maxWidth`, or the capped box hugs the left edge
+ * instead of centring. Native is untouched -- a phone is never wider than this.
+ */
+const WEB_CONTENT_MAX_WIDTH = 1280;
+
+function webMeasure(): ViewStyle | null {
+  if (Platform.OS !== 'web') return null;
+  return { width: '100%', maxWidth: WEB_CONTENT_MAX_WIDTH, alignSelf: 'center' };
+}
+
 export function Screen({
   children,
   scroll = true,
@@ -90,6 +109,7 @@ export function Screen({
     <ScrollView
       style={styles.flex}
       contentContainerStyle={[
+        webMeasure(),
         {
           paddingHorizontal: padded ? spacing.lg : 0,
           paddingBottom: bottomInset + insets.bottom + spacing.xl,
@@ -113,6 +133,7 @@ export function Screen({
     <View
       style={[
         styles.flex,
+        webMeasure(),
         {
           paddingHorizontal: padded ? spacing.lg : 0,
           paddingBottom: bottomInset + insets.bottom,
@@ -180,6 +201,7 @@ export function ListScreen({
           // which would nest scrollables.
           React.cloneElement(children as React.ReactElement<any>, {
             contentContainerStyle: [
+              webMeasure(),
               {
                 paddingBottom: bottomInset + insets.bottom,
                 ...(contentContainerStyle as object | undefined),

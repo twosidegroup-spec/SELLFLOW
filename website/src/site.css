@@ -433,14 +433,32 @@ ol {
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.btn-primary:hover {
-  background: var(--accent-hover);
-}
-
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  
+  .btn-primary:hover {
+    background: var(--accent-hover);
+  }
+  
+  /*
+   * Secondary action, next to the primary one.
+   *
+   * `.btn` is deliberately borderless because most of its uses are inline links
+   * inside prose. A header needs its secondary action to read as a control, so it
+   * takes a visible edge here rather than `.btn` growing a border that would then
+   * appear on every other button on the page.
+   */
+  .btn-outline {
+    border-color: var(--border);
+    color: var(--text);
+  }
+  
+  .btn-outline:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  
 /* The store's Install button: the single most prominent thing on the page. */
 .btn-install {
   /*

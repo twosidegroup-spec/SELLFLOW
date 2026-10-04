@@ -1,6 +1,12 @@
 # Generated build output -- rebuild with `node build.mjs`
 dist/
 
+# Staging directory for the web dashboard export. build-dashboard.mjs writes here
+# first, then copies into dist/app/ and removes it. It is gitignored because a
+# build interrupted between those two steps leaves a partial copy behind, and a
+# stray 7 MB export is not something to commit.
+.dashboard-build/
+
 # Local review output from review.mjs
 .review/
 

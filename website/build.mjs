@@ -47,8 +47,31 @@ const DIST = join(HERE, 'dist');
 /** Set to the real domain once the site is hosted. */
 const SITE_URL = process.env.SELLFLOW_SITE_URL ?? 'https://sellflow.app/';
 
+/**
+ * Where the authenticated dashboard is mounted.
+ *
+ * Must agree with `EXPO_ROUTER_BASE_PATH` in `website/build-dashboard.mjs` and with
+ * the rewrite in the root `vercel.json`. Three places holding one string is the
+ * price of a dashboard that is a static export beside a static site rather than a
+ * second deployment, so it is read from one env var and defaulted rather than
+ * written into the markup by hand.
+ */
+const DASHBOARD_BASE = process.env.EXPO_ROUTER_BASE_PATH?.trim() || '/app';
+
 const problems = [];
 const warn = (m) => problems.push(m);
+
+/**
+ * Things worth saying that must not stop the build.
+ *
+ * Separate from `problems` on purpose. `warn` exits non-zero because a broken
+ * download button or an empty gallery is worse than no page, and neither has a
+ * safe fallback. A missing dashboard does: the marketing site still works, it
+ * just has three links that 404, which is a worse day but not a broken product.
+ * Blocking a copy tweak on it would make this build hostile to its own job.
+ */
+const notes = [];
+const note = (m) => notes.push(m);
 
 /* ------------------------------------------------------------ token pass */
 const apkPath = appConfig.apkPath.startsWith('/') ? appConfig.apkPath.slice(1) : appConfig.apkPath;
@@ -214,6 +237,9 @@ const tokens = {
   supportEmail: appConfig.supportEmail,
   year: appConfig.year,
   siteUrl: SITE_URL,
+  appBasePath: DASHBOARD_BASE,
+  appSignInHref: `${DASHBOARD_BASE}/sign-in`,
+  appRegisterHref: `${DASHBOARD_BASE}/register`,
 };
 
 const render = (file) =>
@@ -226,6 +252,23 @@ const render = (file) =>
 writeFileSync(join(DIST, 'index.html'), render('index.html'));
 writeFileSync(join(DIST, 'privacy.html'), render('privacy.html'));
 writeFileSync(join(DIST, 'terms.html'), render('terms.html'));
+
+/*
+ * The marketing page now links into the dashboard at `${DASHBOARD_BASE}`, so a
+ * build with no dashboard behind it ships a few links that 404.
+ *
+ * `npm run web:build:all` builds the marketing site and then the dashboard, so the
+ * normal path cannot hit this. It only fires when someone runs `web:build` on its
+ * own, which is the legitimate copy-only path -- and that must keep working.
+ */
+const dashboardEntry = join(DIST, 'app', 'index.html');
+const hasDashboard = existsSync(dashboardEntry);
+if (!hasDashboard) {
+  note(
+    `No dashboard in dist/app, so the header, footer and install links to ` +
+      `${DASHBOARD_BASE} will 404. Run \`npm run dashboard:build\` after this.`,
+  );
+}
 
 /* ------------------------------------------------------------ side files */
 writeFileSync(join(DIST, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}sitemap.xml\n`);
@@ -372,24 +415,50 @@ console.log(`  asset version   ${assetVersion} (appended to every asset URL)`);
 writeFileSync(
   join(DIST, 'vercel.json'),
   JSON.stringify(
-    {
-      $schema: 'https://openapi.vercel.sh/vercel.json',
-      cleanUrls: true,
-      trailingSlash: false,
-      headers: [
         {
-          source: '/assets/(.*)',
-          headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
-        },
-        {
-          source: '/(.*)',
+          $schema: 'https://openapi.vercel.sh/vercel.json',
+          cleanUrls: true,
+          trailingSlash: false,
           headers: [
-            { key: 'X-Content-Type-Options', value: 'nosniff' },
-            { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+            {
+              source: '/assets/(.*)',
+              headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+            },
+            {
+              source: '/(.*)',
+              headers: [
+                { key: 'X-Content-Type-Options', value: 'nosniff' },
+                { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+              ],
+            },
+            { source: '/app', headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }] },
+            {
+              source: '/app/_expo/(.*)',
+              headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+            },
           ],
+          /*
+           * The dashboard is an SPA exported at `app/`, so every deep link has to
+           * resolve to the one shell. Without this, reloading on /app/orders 404s.
+           *
+           * Destination is `/app`, not `/app/index.html`: `cleanUrls` already strips
+           * the extension, so naming the file explicitly is a redirect loop.
+           *
+           * Known and accepted: because this catch-all spans everything under /app,
+           * a genuinely missing file there is answered with the shell rather than a
+           * 404. A passthrough rewrite for the asset trees does NOT fix this --
+           * Vercel does not short-circuit on a source that rewrites to itself, and
+           * the catch-all still matches. It only affects diagnostics (the browser
+           * reports a MIME error rather than a 404) and the expo-router icons that
+           * Vercel never uploads because their path contains `node_modules`.
+           */
+          redirects: [
+            { source: '/login', destination: '/app/sign-in', permanent: false },
+            { source: '/register', destination: '/app/register', permanent: false },
+            { source: '/dashboard', destination: '/app', permanent: false },
+          ],
+          rewrites: [{ source: '/app/:path*', destination: '/app' }],
         },
-      ],
-    },
     null,
     2,
   )
@@ -421,4 +490,13 @@ console.log(`  apk          ${apkIsExternal ? apkPath : `public/${apkPath}`}  ${
 console.log(`  screenshots  ${shots} captures (${dark} with a dark-theme pair)`);
 console.log(`  icons        favicon-32, favicon-96, apple-touch, 192, 512, og-image`);
 console.log(`  fonts        Inter latin + latin-ext (self-hosted)`);
+console.log(
+  `  dashboard    ${hasDashboard ? `${DASHBOARD_BASE}  ${human(sizeOf(join(DIST, 'app')))}` : 'not built'}`,
+);
 console.log(`  total        ${human(sizeOf(DIST))} including the APK\n`);
+
+if (notes.length) {
+  console.log('  notes:');
+  for (const n of notes) console.log(`    - ${n}`);
+  console.log('');
+}

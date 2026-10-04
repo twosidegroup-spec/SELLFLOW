@@ -61,6 +61,20 @@
         </nav>
 
         <div class="header-end">
+          <!--
+            The dashboard entry points. Added alongside the existing Install
+            button rather than in place of anything: this page's job is still the
+            download, and a returning seller should reach their orders in one click
+            without scrolling past the hero.
+
+            /login and /register are Vercel redirects onto the app's own
+            /app/sign-in and /app/register, so these read as top-level marketing
+            URLs while resolving to the real authenticated routes. They point at
+            the app directly rather than at a page here, because there is no
+            second sign-in form to maintain.
+          -->
+          <a class="btn btn-outline" href="{{appSignInHref}}">Log in</a>
+
           <!-- Scrolls to the install section. Deliberately NOT data-download:
                it does not download the APK, and the download buttons are
                asserted to all point at the real asset. -->
@@ -404,6 +418,19 @@
               distributed directly rather than through Google Play. That prompt comes from Android
               itself and applies to any app installed outside its store.
             </p>
+
+            <!--
+              The same product, in a browser. Sellers who already have an account do
+              not need the APK to work: orders, payments and automation status are
+              the same records on both. Stated here because this is the section a
+              returning seller lands on.
+            -->
+            <p class="install-note">
+              Already using SellFlow?
+              <a href="{{appSignInHref}}">Open your dashboard</a> or
+              <a href="{{appRegisterHref}}">create an account</a>. Same orders, same payments,
+              same numbers &mdash; on the web.
+            </p>
           </div>
         </div>
       </section>
@@ -453,6 +480,12 @@
               <a href="#ratings">Ratings &amp; reviews</a>
               <a href="#release">Release notes</a>
               <a href="#faq">FAQ</a>
+            </div>
+            <div>
+              <h3>Sign in</h3>
+              <a href="{{appSignInHref}}">Seller dashboard</a>
+              <a href="{{appRegisterHref}}">Create an account</a>
+              <a href="#install">Get the app</a>
             </div>
             <div>
               <h3>Support</h3>
