@@ -28,11 +28,11 @@ export const appConfig = {
   developer: 'SellFlow',
 
   version: '1.0.0',
-  buildNumber: '1',
-  releaseDate: '2026-10-02',
-  releaseDateLabel: '2 October 2026',
+  buildNumber: '2',
+  releaseDate: '2026-10-04',
+  releaseDateLabel: '4 October 2026',
   /** Compact form for tight one-line UI such as the hero metadata strip. */
-  releaseDateShort: '2 Oct 2026',
+  releaseDateShort: '4 Oct 2026',
   releaseChannel: 'Latest preview release',
 
   platform: 'Android',
@@ -49,9 +49,9 @@ export const appConfig = {
    *
    *   apkPath: 'downloads/sellflow-latest.apk',
    */
-  apkPath: 'https://github.com/twosidegroup-spec/SELLFLOW/releases/download/v1.0.0/sellflow-1.0.0.apk',
-  apkFileName: 'sellflow-1.0.0.apk',
-  apkSizeBytes: 112735 * 1024,
+  apkPath: 'https://github.com/twosidegroup-spec/SELLFLOW/releases/download/v1.1.0/sellflow-1.1.0.apk',
+  apkFileName: 'sellflow-1.1.0.apk',
+  apkSizeBytes: 112_925 * 1024,
   minAndroidVersion: 'Android 8.0 (API 26) or newer',
   abi: 'arm64-v8a, armeabi-v7a, x86_64',
 
@@ -497,8 +497,20 @@ export const about = {
  * Data safety. Every row here was checked against the code, not assumed.
  *
  * Verified: package.json has no analytics, advertising, attribution or crash
- * reporting SDK; app.json declares no Android permissions; all traffic goes to
- * Supabase over HTTPS; the app ships only a public, read-restricted API key.
+ * reporting SDK; all traffic goes to Supabase over HTTPS; the app ships only a
+ * public, read-restricted API key.
+ *
+ * REVISED after Phase 2. The previous version of this block claimed "the app
+ * requests no Android permissions" and listed messages among the data not
+ * collected. Both were true when written and both stopped being true when the
+ * native SMS listener shipped: the app now requests exactly one permission,
+ * `android.permission.RECEIVE_SMS`, and it does read messages --
+ * specifically bKash, Nagad, Rocket and Upay payment notifications.
+ *
+ * A stale "no permissions" claim on a public page is worse than a limitation
+ * nobody mentions, so this block states the permission, the purpose, the
+ * handling, and the fact that the feature is not yet verified against real
+ * provider messages.
  */
 export const dataSafety = {
   intro:
@@ -532,12 +544,47 @@ export const dataSafety = {
         label: 'App info',
         detail: 'Your business name, outlet details and account email',
       },
+      {
+        icon: 'message',
+        label: 'Payment notifications',
+        detail:
+          'If you turn on automatic payment detection, the service, amount, transaction reference and phone numbers from a bKash, Nagad, Rocket or Upay payment message. Nothing else from any message is read or kept.',
+      },
     ],
+  },
+  permissions: {
+    headline: 'One permission: receive SMS',
+    detail:
+      'Automatic payment detection is off until you allow it, and it is the only permission SellFlow asks for. It reads incoming payment notifications from bKash, Nagad, Rocket and Upay so a customer payment can be matched to an order without typing it.',
+    rows: [
+      {
+        label: 'Asked for',
+        value: 'android.permission.RECEIVE_SMS',
+      },
+      {
+        label: 'Never asked for',
+        value: 'Contacts, location, camera, photos, microphone, call history, and read/send SMS',
+      },
+      {
+        label: 'Message inbox',
+        value: 'Never opened. SellFlow does not read your message history.',
+      },
+      {
+        label: 'One-time passcodes',
+        value: 'Ignored. An OTP is never treated as a payment.',
+      },
+      {
+        label: 'Stored message text',
+        value: 'Never. Only the extracted payment fields and a one-way hash are kept.',
+      },
+    ],
+    honesty:
+      'Automatic detection is new. It has been tested against representative sample messages, but it has not yet been confirmed against live payment messages from each provider, and it is still being rolled out. If it does not recognise a payment, you can always record it by hand exactly as before.',
   },
   notCollected: {
     headline: 'Data not collected',
     detail:
-      'SellFlow does not ask for location, photos, contacts, messages or health data, and the app requests no Android permissions.',
+      'SellFlow does not ask for location, photos, contacts or health data, and it does not open your message inbox.',
   },
   transit: {
     headline: 'Data is encrypted in transit',
@@ -557,8 +604,8 @@ export const dataSafety = {
 export const appInfo = {
   title: 'App info',
   rows: [
-    { label: 'Version', value: '1.0.0' },
-    { label: 'Updated', value: '2 Oct 2026' },
+    { label: 'Version', value: '1.0.0 (build 2)' },
+    { label: 'Updated', value: '4 Oct 2026' },
     { label: 'Size', value: '~110 MB' },
     { label: 'Requires', value: 'Android 8.0+' },
     { label: 'Category', value: 'Business' },

@@ -9,7 +9,7 @@
 import { connect, sleep } from './tools/cdp.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
-const BASE = 'http://127.0.0.1:8099/';
+const BASE = process.env.SITE_URL ?? 'http://127.0.0.1:8099/';
 const OUT = 'C:/Users/Sajidul Haque Sajid/Desktop/SELFLOW/sellflow/website/.review';
 mkdirSync(OUT, { recursive: true });
 

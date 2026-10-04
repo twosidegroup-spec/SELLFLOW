@@ -21,6 +21,7 @@ import {
 } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 import {
   appConfig,
@@ -64,8 +65,32 @@ const apkAbs = join(PUBLIC, apkPath);
  */
 const apkIsExternal = /^https?:\/\//i.test(apkPath);
 
+// Where the artifact is measured, and what happens when it is not on disk.
+//
+// Previously an external APK skipped the size check entirely, so `apkSizeBytes`
+// only ever got refreshed for a self-hosted file. That contradicted the claim in
+// README.md that the displayed size "cannot go stale", and in practice it left the
+// public page advertising the size of the previous release.
+//
+// So: prefer a local copy named by `apkFileName` when one exists, whatever the
+// URL is, and use it to correct the size. A missing local copy is a warning, not a
+// failure -- the download still works, it just cannot be measured here.
+const localApk = join(PUBLIC, 'downloads', appConfig.apkFileName ?? 'sellflow-latest.apk');
+
 if (apkIsExternal) {
   console.log(`  apk          external -> ${apkPath}`);
+  if (existsSync(localApk)) {
+    const bytes = statSync(localApk).size;
+    if (bytes !== appConfig.apkSizeBytes) {
+      appConfig.apkSizeBytes = bytes;
+      console.log(`               size corrected from local copy -> ${(bytes / 1048576).toFixed(1)} MB`);
+    }
+  } else {
+    warn(
+      `No local copy at public/downloads/${appConfig.apkFileName ?? 'sellflow-latest.apk'} -- ` +
+        'the displayed APK size comes from the config and cannot be verified here.',
+    );
+  }
 } else {
   if (!existsSync(apkAbs)) {
     warn(`APK not found at public/${apkPath} -- the download button would 404.`);
@@ -210,6 +235,16 @@ writeFileSync(
   `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>${SITE_URL}</loc>\n    <lastmod>${appConfig.releaseDate}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>\n`
 );
 
+/*
+ * A root favicon.ico, copied from the 32px PNG.
+ *
+ * The page already declares <link rel="icon" href="assets/img/favicon-32.png">,
+ * but browsers still request /favicon.ico on their own and log a 404 when it is
+ * missing. A PNG at that path is served fine -- every current browser sniffs the
+ * content -- and it is the difference between a clean console and a permanent 404.
+ */
+copyFileSync(join(PUBLIC, 'assets/img/favicon-32.png'), join(DIST, 'favicon.ico'));
+
 writeFileSync(join(DIST, 'manifest.webmanifest'),
   JSON.stringify(
     {
@@ -230,6 +265,99 @@ null,
       2,
     )
 );
+
+/*
+ * Content-version every asset URL, before the Vercel headers are written.
+ *
+ * Why this exists: `/assets/(.*)` is served `max-age=31536000, immutable`. That is
+ * the right header for a content-addressed asset and the wrong header for a fixed
+ * filename. Deploying new site.js / config.js to the same URLs left returning
+ * visitors running the previous release indefinitely -- the page loaded, the hero
+ * rendered, and nothing that JavaScript draws ever updated.
+ *
+ * So the asset URLs carry a hash of their own content. Immutable caching then does
+ * exactly what it promises: a URL changes when the bytes change, and a returning
+ * visitor gets the new build.
+ *
+ * The version is derived from the built files rather than the release version, so
+ * editing a screenshot or a stylesheet is enough to bust the cache.
+ */
+const assetVersion = createHash('sha256')
+  .update(readFileSync(join(DIST, 'assets/js/site.js')))
+  .update(readFileSync(join(DIST, 'assets/css/site.css')))
+  .update(readFileSync(join(DIST, 'assets/js/config.js')))
+  .digest('hex')
+  .slice(0, 10);
+
+/** Appends `?v=<hash>` to an asset path, leaving anything else untouched. */
+function versionAsset(match) {
+  if (/\?/.test(match)) return match;
+  return `${match}?v=${assetVersion}`;
+}
+
+/**
+ * Matches a relative `url()` in a stylesheet, skipping data URIs, absolute URLs
+ * and root-relative paths (which the deployment rewrites anyway).
+ */
+const CSS_URL = /url\((['"]?)(?!data:|https?:|\/)([^)'"]+)\1\)/g;
+
+// HTML: src/href attributes that point into assets/.
+for (const page of ['index.html', 'privacy.html', 'terms.html']) {
+  const file = join(DIST, page);
+  const html = readFileSync(file, 'utf8').replace(
+    /((?:src|href)="assets\/[^"?]+)/g,
+    versionAsset,
+  );
+  writeFileSync(file, html);
+}
+
+// site.js imports config.js as an ES module; the query has to go on the import
+// specifier or the browser keeps the cached config.js.
+{
+  const file = join(DIST, 'assets/js/site.js');
+  const js = readFileSync(file, 'utf8').replace(
+    /(['"])\.\/config\.js\1/g,
+    `$1./config.js?v=${assetVersion}$1`,
+  );
+  writeFileSync(file, js);
+}
+
+// site.css references images and fonts with url().
+{
+  const file = join(DIST, 'assets/css/site.css');
+  const css = readFileSync(file, 'utf8').replace(CSS_URL, (whole, quote, path) => {
+    if (/\?/.test(path)) return whole;
+    return `url(${quote}${path}?v=${assetVersion}${quote})`;
+  });
+  writeFileSync(file, css);
+}
+
+/*
+ * fonts.css is the same story one level down: it is the stylesheet that
+ * `@import`s nothing and points straight at the woff2 files, and it is copied
+ * rather than rendered, so it does not pick up the pass above.
+ */
+{
+  const file = join(DIST, 'assets/css/fonts.css');
+  const css = readFileSync(file, 'utf8').replace(CSS_URL, (whole, quote, path) => {
+    if (/\?/.test(path)) return whole;
+    return `url(${quote}${path}?v=${assetVersion}${quote})`;
+  });
+  writeFileSync(file, css);
+}
+
+// manifest.webmanifest names its own icons, and the service worker fetch of the
+// manifest is not a browser sub-resource load, so it never gets the HTML's query.
+{
+  const file = join(DIST, 'manifest.webmanifest');
+  const manifest = readFileSync(file, 'utf8').replace(
+    /("src"\s*:\s*")([^"?]+)(")/g,
+    (_all, open, path, close) => `${open}${path}?v=${assetVersion}${close}`,
+  );
+  writeFileSync(file, manifest);
+}
+
+console.log(`  asset version   ${assetVersion} (appended to every asset URL)`);
 
 /*
  * A vercel.json inside dist as well, so the built folder can be deployed on its

@@ -1081,6 +1081,62 @@ ol {
   stroke-linejoin: round;
 }
 
+/*
+ * The SMS permission disclosure.
+ *
+ * A two-column label/value list rather than more chips: these are factual
+ * statements about one permission ("asked for", "never asked for", "inbox",
+ * "passcodes", "stored text") and a reader comparing them needs them stacked and
+ * aligned, not wrapped inline.
+ */
+.safety-rows {
+  margin-top: var(--s-sm);
+  border-top: 1px solid var(--border-soft);
+}
+
+.safety-rows-item {
+  display: grid;
+  grid-template-columns: minmax(140px, 34%) 1fr;
+  gap: var(--s-sm);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.safety-rows-key {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.safety-rows-val {
+  color: var(--text);
+}
+
+@media (max-width: 560px) {
+  .safety-rows-item {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+/*
+ * The "not yet confirmed" note. Deliberately quieter than the rows above it and
+ * never styled as an error: it is a statement of where the feature is, not a
+ * defect. It is on the public page because a seller enabling automatic detection
+ * is entitled to know that before they turn it on.
+ */
+.safety-honesty {
+  margin-top: var(--s-sm);
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 6px 6px 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
 /* ------------------------------------------------------- ratings block --- */
 /* ------------------------------------------------------- ratings block --- */
 /*
@@ -1940,6 +1996,12 @@ ol {
   border-top: 1px solid var(--border-soft);
   font-size: 13px;
   color: var(--text-3);
+}
+
+/* Sits with the other footer lines rather than centred under them, so the
+   baseline stays aligned at desktop and it simply wraps on a phone. */
+.footer-credit {
+  color: var(--text-2);
 }
 
 @media (max-width: 760px) {

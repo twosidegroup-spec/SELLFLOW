@@ -56,9 +56,14 @@ and had to be provisioned):
 | A13 | AAR contains the compiled receiver and all four adapters | Unzip `classes.jar` | Classes present | **PASS** — `SellflowSmsReceiver`, `CandidateQueue`, `Fingerprint`, and `providers/{Bkash,Nagad,Rocket,Upay}Adapter` |
 | A14 | App module Kotlin compiles | `gradlew.bat :app:compileDebugKotlin` | Compiles | **PASS** |
 | A15 | App manifest merges | `gradlew.bat :app:processDebugMainManifest` | Merged manifest produced | **PASS** |
-| A16 | **Full debug APK** | `gradlew.bat :app:assembleDebug` | APK produced | **FAIL** — not a repo defect. Third-party C++ (`react-native-worklets`, `react-native-screens`) fails to link `libc++_shared` under NDK 27 on this Windows host. See Finding F5. |
-| A17 | APK manifest inspection | `aapt2 dump xmltree app-debug.apk` | 1 SMS receiver | **BLOCKED** — A16 produced no APK |
-| A18 | Production build | `eas build --profile preview` | APK | **NOT TESTED** — eas-cli not installed, EAS account not authenticated |
+| A16 | **Full debug APK, local build** | `gradlew.bat :app:assembleDebug` | APK produced | **FAIL** - not a repo defect. Third-party C++ (`react-native-worklets`, `react-native-screens`) fails to link `libc++_shared` under NDK 27 on this Windows host. See Finding F5. **Superseded by A18.** |
+| A17 | APK manifest inspection, local build | `aapt2 dump xmltree app-debug.apk` | 1 SMS receiver | **N/A** - superseded by A19, which inspects a real APK. |
+| A18 | **EAS build, preview profile** | `eas build --platform android --profile preview` | APK | **PASS** - build `29f833c7-b760-4eaa-ae98-7b39f621cda0`, FINISHED, from commit `70714f1`. |
+| A19 | **EAS APK downloaded and inspected** | `eas build:download --id 29f833c7-...`, then `aapt2 dump badging` | Correct package and manifest | **PASS** - 110.28 MB; `com.sellflow.app` 1.0.0 versionCode 1; minSdk 24 / targetSdk 36; 4 ABIs; `RECEIVE_SMS` present; exactly 1 SMS receiver; **0 forbidden permissions**. |
+| A20 | **Native module is inside the APK** | Scan `classes*.dex` | All module classes present | **PASS** - `SellflowSmsReceiver`, `SellflowSmsModule`, `CandidateQueue` and all four `*Adapter` classes found in the packaged dex. |
+| A21 | **No privileged credential in the APK** | Scan `assets/index.android.bundle` | None present | **PASS** - 0 standalone secret keys, 0 JWTs, no `service_role`. The single bare `sb_secret_` is supabase-js own key-prefix constant in the Hermes string table. |
+| A22 | **No raw SMS corpus in the APK** | Scan the bundle for fixture identifiers | None present | **PASS** - 0 occurrences of the corpus file, its test names, or any fixture message body. |
+| A23 | Production AAB | `eas build --profile production` | AAB | **NOT TESTED** - deliberately not built; this pass was scoped to a non-production profile. |
 
 > **A10 detail, because it matters.** Before this pass the Kotlin had **never been
 > compiled**. It contained 43 compile errors across 6 files, including a literally

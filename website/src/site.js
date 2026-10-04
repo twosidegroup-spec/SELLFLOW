@@ -124,6 +124,9 @@ const ICONS = {
   user: 'M12 11.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4.5 21v-1a5.5 5.5 0 0 1 11 0v1',
   list: 'M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01',
   building: 'M4 21V4.5h9V21M13 10h7v11M7 8h3M7 12h3M7 16h3M16 14h1.5M16 17.5h1.5',
+  message:
+    'M20.5 12.5a7.5 7.5 0 0 1-10.9 6.7L4 20.5l1.3-5.6A7.5 7.5 0 1 1 20.5 12.5zM8.5 11h7M8.5 14.5h4.5',
+  shield: 'M12 3l7.5 3v5.5c0 4.4-3 8.3-7.5 9.5-4.5-1.2-7.5-5.1-7.5-9.5V6z',
 };
 
 function icon(name, extra = {}) {
@@ -303,6 +306,56 @@ function renderSafety() {
   host.replaceChildren(
     row('share', DATA_SAFETY.shared),
     row('info', DATA_SAFETY.collected, DATA_SAFETY.collected),
+    /*
+     * The SMS permission gets its own row, not a clause inside "data not
+     * collected".
+     *
+     * The app does read messages -- bKash, Nagad, Rocket and Upay payment
+     * notifications -- so burying that inside a list of things it does not touch
+     * would be the wrong shape. It states the permission, what is never asked
+     * for, and that message text is never kept, in that order, because that is
+     * the order a reader needs it in.
+     */
+    ...(DATA_SAFETY.permissions
+      ? [
+          el(
+            'div',
+            { class: 'safety-row' },
+            el('span', { class: 'safety-icon' }, icon('shield')),
+            el(
+              'div',
+              {},
+              el('h3', {}, DATA_SAFETY.permissions.headline),
+              DATA_SAFETY.permissions.detail
+                ? el('p', {}, DATA_SAFETY.permissions.detail)
+                : null,
+              DATA_SAFETY.permissions.rows?.length
+                ? el(
+                    'div',
+                    { class: 'safety-rows' },
+                    ...DATA_SAFETY.permissions.rows.map((r) =>
+                      el(
+                        'div',
+                        { class: 'safety-rows-item' },
+                        el('span', { class: 'safety-rows-key' }, r.label),
+                        el('span', { class: 'safety-rows-val' }, r.value),
+                      ),
+                    ),
+                  )
+                : null,
+              /*
+               * Stated in public, on the page, rather than only in the repo. The
+               * feature is new and unconfirmed against live provider messages, and
+               * a seller reading "automatic detection" deserves to know that
+               * before they turn it on.
+               */
+              DATA_SAFETY.permissions.honesty
+                ? el('p', { class: 'safety-honesty' }, DATA_SAFETY.permissions.honesty)
+                : null,
+            ),
+          ),
+        ]
+      : []),
     row('eyeOff', DATA_SAFETY.notCollected),
     row('lock', DATA_SAFETY.transit),
     row('trash', DATA_SAFETY.control),
