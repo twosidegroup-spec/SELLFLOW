@@ -20,17 +20,29 @@ website/src
 website/*.mjs
 website/README.md
 
+# Staging directory for the web dashboard export. Never deployed: dist/app is the
+# copy that ships. Listed because an interrupted build can leave it behind, and it
+# is a full ~7 MB export of the app bundle.
+website/.dashboard-build
+
 # The Expo application itself is not part of a static marketing site.
-src
-assets
-images
-supabase
-scripts
-docs
-.expo
-ios
-android
-.expo-shared
+#
+# These MUST stay anchored with a leading slash. `.vercelignore` uses gitignore
+# syntax, where a bare name matches that directory at ANY depth. Unanchored, the
+# `assets` line below also matched website/dist/assets (every stylesheet, script,
+# font and image) and website/dist/app/assets (the dashboard's Inter fonts and
+# expo-router icons), so the upload shipped a site whose HTML loaded but whose
+# entire assets tree was missing -- the page rendered raw and unstyled.
+/src
+/assets
+/images
+/supabase
+/scripts
+/docs
+/.expo
+/ios
+/android
+/.expo-shared
 
 # Tooling / CI noise
 .github
