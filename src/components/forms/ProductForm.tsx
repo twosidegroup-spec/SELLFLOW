@@ -25,13 +25,13 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Button, Card, Input, MoneyInput, Screen, Text, TextArea } from '@/components/ui';
+import { Button, Card, Input, MoneyInput, NumberInput, Screen, Text, TextArea } from '@/components/ui';
 import {
   useCreateProduct,
   useUpdateProduct,
   type ProductInput,
 } from '@/features/products/mutations';
-import { toMajor, toMinor, zero } from '@/lib/money';
+import { money, toMajor, zero } from '@/lib/money';
 import type { Money } from '@/lib/money';
 import { AppError } from '@/lib/errors';
 import { useSession } from '@/store/session';
@@ -40,13 +40,23 @@ import { useTheme } from '@/theme/ThemeProvider';
 export interface ProductFormProps {
   /** Present when editing. Absent when creating. */
   productId?: string;
-  /** Seeded values, used only when editing. */
+  /**
+   * Seeded values, used only when editing.
+   *
+   * Money is passed in DATABASE UNITS (whole taka), not the minor units the form
+   * edits. A route that had to convert would be handling the read path, and the
+   * read path has a different helper from the write path -- see src/lib/money.ts.
+   * Keeping both directions inside this one component means the conversion happens
+   * exactly twice, in the two places that own it, and no route can get it backwards.
+   */
   initial?: {
     name: string;
     sku: string | null;
     category: string | null;
-    sellingPrice: Money;
-    costPrice: Money | null;
+    /** Whole taka, as stored in numeric(14,2). */
+    sellingPrice: number;
+    /** Whole taka, or null when the cost was never recorded. */
+    costPrice: number | null;
     lowStockThreshold: number;
     trackInventory: boolean;
     notes: string | null;
@@ -56,9 +66,15 @@ export interface ProductFormProps {
   onSaved?: () => void;
 }
 
-type Errors = Partial<Record<'name' | 'sellingPrice' | 'costPrice' | 'sku', string>>;
+/**
+ * Stock levels are integer columns in Postgres. A threshold past this is not a
+ * plausible shop, and is more likely a mistyped figure than a real warning level.
+ */
+const MAX_STOCK_THRESHOLD = 1_000_000;
 
-export default function ProductForm({ productId, initial, onSaved }: ProductFormProps) {
+type Errors = Partial<Record<'name' | 'sellingPrice' | 'costPrice' | 'sku' | 'threshold', string>>;
+
+export function ProductForm({ productId, initial, onSaved }: ProductFormProps) {
   const router = useRouter();
   const { spacing } = useTheme();
 
@@ -70,11 +86,20 @@ export default function ProductForm({ productId, initial, onSaved }: ProductForm
   const [name, setName] = useState(initial?.name ?? '');
   const [sku, setSku] = useState(initial?.sku ?? '');
   const [category, setCategory] = useState(initial?.category ?? '');
-  const [sellingPrice, setSellingPrice] = useState<Money | null>(initial?.sellingPrice ?? null);
-  const [costPrice, setCostPrice] = useState<Money | null>(initial?.costPrice ?? null);
-  const [threshold, setThreshold] = useState<Money | null>(
-    initial ? toMinor(initial.lowStockThreshold) : null,
+  // Database whole taka -> form minor units. The read-path helper, used on the read path.
+  const [sellingPrice, setSellingPrice] = useState<Money | null>(
+    initial ? money(initial.sellingPrice) : null,
   );
+  const [costPrice, setCostPrice] = useState<Money | null>(
+    // null stays null. Converting it to zero would claim the item is free to make.
+    initial?.costPrice === null || initial?.costPrice === undefined ? null : money(initial.costPrice),
+  );
+  /*
+   * A count of units, stored as a plain integer. It was briefly a Money, which meant
+   * a threshold of 5 was parsed as 500 -- the ? and two decimal places had nothing
+   * to do with it.
+   */
+  const [threshold, setThreshold] = useState<number | null>(initial?.lowStockThreshold ?? 0);
   const [notes, setNotes] = useState(initial?.notes ?? '');
 const [errors, setErrors] = useState<Errors>({});
   const [banner, setBanner] = useState<string | null>(null);
@@ -106,8 +131,10 @@ const [errors, setErrors] = useState<Errors>({});
       next.costPrice = 'A cost cannot be negative.';
     }
 
-    if (threshold !== null && threshold < zero()) {
-      next.name = errors.name;
+    // A count, never money. parseWholeNumber has already clamped it to >= 0, so the
+    // only real failure here is a threshold past what any stock level could reach.
+    if (threshold !== null && threshold > MAX_STOCK_THRESHOLD) {
+      next.threshold = `That is more units than a shop could hold. Use a number below ${MAX_STOCK_THRESHOLD}.`;
     }
 
     setErrors(next);
@@ -122,10 +149,12 @@ const [errors, setErrors] = useState<Errors>({});
       name: name.trim(),
       sku: sku.trim() || null,
       category: category.trim() || null,
-      sellingPrice: toMajorOrZero(sellingPrice),
+      // Validation already refused a null selling price; the fallback is unreachable
+      // in practice and exists only so the type is total.
+      sellingPrice: sellingPrice === null ? 0 : toMajor(sellingPrice),
       // `null`, not 0. Zero would claim the item is free to make.
-      costPrice: costPrice === null ? null : toMajorOrZero(costPrice),
-      lowStockThreshold: threshold === null ? 0 : Math.round(toMajorOrZero(threshold)),
+      costPrice: costPrice === null ? null : toMajor(costPrice),
+      lowStockThreshold: threshold === null ? 0 : threshold,
       trackInventory: initial?.trackInventory ?? true,
       notes: notes.trim() || null,
     };
@@ -273,11 +302,12 @@ setJustSaved(true);
               testID="product-cost-price"
             />
 
-            <MoneyInput
+            <NumberInput
               label="Low stock alert at"
               value={threshold}
               onChange={setThreshold}
-              hint="SellFlow warns you when stock for a tracked product falls to this number."
+              error={errors.threshold}
+              hint="In units. SellFlow warns you when a tracked product's stock falls this low."
               stepper={{ step: 1, min: 0 }}
               testID="product-threshold"
             />
@@ -294,9 +324,4 @@ setJustSaved(true);
       </View>
     </Screen>
   );
-}
-
-function toMajorOrZero(value: Money | null): number {
-  if (value === null) return 0;
-  return toMajor(value);
 }

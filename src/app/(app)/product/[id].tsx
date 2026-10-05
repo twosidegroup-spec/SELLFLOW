@@ -20,15 +20,20 @@ import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Package, PackageMinus, PackagePlus } from 'lucide-react-native';
 
-import { Button, Card, Divider, ErrorState, LoadingState, Screen, Text } from '@/components/ui';
+import { Badge, Button, Card, Divider, ErrorState, LoadingState, NumberInput, Screen, Text } from '@/components/ui';
 import { useAdjustStock } from '@/features/orders/mutations';
 import { useArchiveProduct, useDeleteProduct } from '@/features/products/mutations';
 import { useMovements, useProduct, useStock } from '@/features/products/queries';
-import { formatMoney, zero } from '@/lib/money';
-import type { Money } from '@/lib/money';
+import {
+  INVENTORY_REASON_LABEL,
+  MANUAL_STOCK_REASONS,
+} from '@/features/products/presentation';
+import { formatMoney } from '@/lib/money';
+import type { InventoryReason } from '@/lib/database.types';
 import { AppError } from '@/lib/errors';
 import { canWrite, useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
+
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -46,8 +51,8 @@ export default function ProductDetailScreen() {
   const archiveProduct = useArchiveProduct();
   const deleteProduct = useDeleteProduct();
 
-  const [delta, setDelta] = useState<Money | null>(null);
-  const [reason, setReason] = useState('');
+  const [amount, setAmount] = useState<number | null>(null);
+  const [reason, setReason] = useState<InventoryReason>('adjustment');
   const [banner, setBanner] = useState<string | null>(null);
 
   if (product.isLoading) return <LoadingState />;
@@ -66,8 +71,22 @@ export default function ProductDetailScreen() {
   const available = stock.data?.quantity ?? null;
   const writable = canWrite(role);
 
+  /*
+   * A count, not money. `amount` is how many UNITS to add or remove; the direction
+   * comes from which button was pressed. Storing a signed figure and having two
+   * buttons both apply it was the alternative, and it makes it impossible to hit
+   * "remove 5" while actually adding 5.
+   */
   const applyAdjustment = async (direction: 1 | -1) => {
-    if (delta === null || delta <= zero()) return;
+    if (amount === null || amount <= 0) return;
+    if (direction === -1 && available !== null && amount > available) {
+      // Caught here so the seller is told, rather than letting the RPC reject it
+      // after they have already typed the number.
+      setBanner(
+        `Only ${available} in stock. Removing ${amount} would leave the shelf negative.`,
+      );
+      return;
+    }
     setBanner(null);
 
     try {
@@ -75,11 +94,10 @@ export default function ProductDetailScreen() {
         storeId: storeId as string,
         productId: row.id,
         variantId: null,
-        delta: direction * Math.round(Number(delta)),
-        reason: (reason.trim() || 'correction') as never,
+        delta: direction * amount,
+        reason,
       });
-      setDelta(null);
-      setReason('');
+      setAmount(null);
     } catch (error) {
       setBanner(
         error instanceof AppError
@@ -177,29 +195,55 @@ export default function ProductDetailScreen() {
 
                 {writable ? (
                   <View style={{ gap: spacing.sm, marginTop: spacing.xs }}>
-                    <Text variant="caption" tone="muted">
-                      Adjust by
-                    </Text>
+                    <NumberInput
+                      label="Adjust by"
+                      value={amount}
+                      onChange={setAmount}
+                      hint="How many units to add or remove. Both buttons use this number."
+                      stepper={{ step: 1, min: 1 }}
+                      testID="stock-amount"
+                    />
+
+                    {/*
+                     * The reason is part of the ledger, not decoration. Six months on,
+                     * "why is stock wrong" is answered by reading these rows, and an
+                     * undifferentiated adjustment cannot be told apart from a purchase
+                     * or a breakage.
+                     */}
+                    <View style={{ gap: spacing.xs }}>
+                      <Text variant="caption" tone="muted">
+                        Why
+                      </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+                        {MANUAL_STOCK_REASONS.map((option) => (
+                          <Badge
+                            key={option.value}
+                            label={option.label}
+                            tone={reason === option.value ? 'primary' : 'neutral'}
+                            onPress={() => setReason(option.value)}
+                            testID={`stock-reason-${option.value}`}
+                          />
+                        ))}
+                      </View>
+                    </View>
+
                     <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                       <Button
                         label="Remove"
                         icon={PackageMinus}
                         variant="secondary"
-                        disabled={delta === null || delta <= zero() || adjustStock.isPending}
+                        disabled={amount === null || amount <= 0 || adjustStock.isPending}
                         onPress={() => void applyAdjustment(-1)}
                         testID="stock-decrease"
                       />
                       <Button
                         label="Add"
                         icon={PackagePlus}
-                        disabled={delta === null || delta <= zero() || adjustStock.isPending}
+                        disabled={amount === null || amount <= 0 || adjustStock.isPending}
                         onPress={() => void applyAdjustment(1)}
                         testID="stock-increase"
                       />
                     </View>
-                    <Text variant="caption" tone="muted">
-                      {delta === null ? 'Enter a number above to enable the buttons.' : `${delta} units`}
-                    </Text>
                   </View>
                 ) : null}
 
@@ -212,10 +256,15 @@ export default function ProductDetailScreen() {
                     {movements.data.slice(0, 5).map((movement) => (
                       <View
                         key={movement.id}
-                        style={{ flexDirection: 'row', justifyContent: 'space-between' }}
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: spacing.xs,
+                        }}
                       >
                         <Text variant="caption" tone="muted">
-                          {movement.reason.replace(/_/g, ' ')}
+                          {INVENTORY_REASON_LABEL[movement.reason] ?? movement.reason}
                         </Text>
                         <Text
                           variant="numericSmall"

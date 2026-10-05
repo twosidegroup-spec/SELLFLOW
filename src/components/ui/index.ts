@@ -29,5 +29,6 @@ export {
 export { SearchBar } from './Controls';
 export { Field, Input, TextArea } from './Input';
 export { MoneyInput, parseMoneyInput, type MoneyInputProps } from './MoneyInput';
+export { NumberInput, type NumberInputProps } from './NumberInput';
 export { PasscodeKeypad, type PasscodeKeypadProps } from './PasscodeKeypad';
 export { Text, toneColor, type TextProps, type TextTone, type TextVariant } from './Text';

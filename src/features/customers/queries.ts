@@ -22,6 +22,14 @@ export interface CustomerInput {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  /**
+   * District and thana were added in migration 0008 for courier delivery, and
+   * CustomerRow has carried them ever since -- but this input type never did, so
+   * there was no way to SET one. A seller recording an address for a rider had no
+   * field to type the thana into.
+   */
+  district?: string | null;
+  thana?: string | null;
   notes?: string | null;
 }
 
@@ -137,6 +145,8 @@ export function useCreateCustomer() {
           phone: input.phone?.trim() || null,
           email: input.email?.trim() || null,
           address: input.address?.trim() || null,
+          district: input.district?.trim() || null,
+          thana: input.thana?.trim() || null,
           notes: input.notes?.trim() || null,
         })
         .select()
@@ -173,6 +183,8 @@ export function useUpdateCustomer() {
       if (input.phone !== undefined) update.phone = input.phone?.trim() || null;
       if (input.email !== undefined) update.email = input.email?.trim() || null;
       if (input.address !== undefined) update.address = input.address?.trim() || null;
+    if (input.district !== undefined) update.district = input.district?.trim() || null;
+    if (input.thana !== undefined) update.thana = input.thana?.trim() || null;
       if (input.notes !== undefined) update.notes = input.notes?.trim() || null;
       if (input.is_archived !== undefined) update.is_archived = input.is_archived;
 

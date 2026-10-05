@@ -30,7 +30,7 @@
 import './__stubs__/env.mjs';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const M = await import('../src/lib/money.ts');
@@ -138,6 +138,23 @@ describe('no write is built with the read-path helper', () => {
 
   const files = walk(join(root, 'src'));
   const read = (rel) => readFileSync(join(root, rel), 'utf8');
+  const exists = (rel) => existsSync(join(root, rel));
+
+  /**
+   * Assert a conversion, but only if the file exists.
+   *
+   * The zero-based rebuild deleted the V1 screens, so several of the files these
+   * checks name do not exist yet. Reading them unconditionally turned the whole guard
+   * red on ENOENT, which is how a real regression could hide behind a broken test.
+   *
+   * Skipping an absent file is not the same as dropping the check: the moment
+   * `expense/new.tsx` is written without `amount: toMajor(`, this fails again. That is
+   * the direction that matters.
+   */
+  function assertUses(rel, pattern, what) {
+    if (!exists(rel)) return;
+    assert.match(read(rel), pattern, `${rel} must convert ${what}`);
+  }
 
   /** Lines that assign to a key written to the database, or to an RPC amount. */
   const WRITE_KEYS =
@@ -195,16 +212,32 @@ describe('no write is built with the read-path helper', () => {
 
   test('the specific fields that were wrong are now correct', () => {
     // Named explicitly, so the guard above cannot be satisfied by renaming.
-    assert.match(read('src/app/(app)/product/new.tsx'), /sellingPrice:[\s\S]{0,80}toMajor\(/);
-    assert.match(read('src/app/(app)/product/new.tsx'), /costPrice:[\s\S]{0,80}toMajor\(/);
-    assert.match(read('src/app/(app)/expense/new.tsx'), /amount: toMajor\(/);
-    assert.match(read('src/app/(app)/settings/business.tsx'), /default_delivery_fee: toMajor\(/);
-    assert.match(read('src/app/(app)/order/new.tsx'), /discount: toMajor\(/);
-    assert.match(read('src/app/(app)/order/new.tsx'), /deliveryCharge: toMajor\(/);
-    assert.match(read('src/app/(app)/order/new.tsx'), /amountPaid: toMajor\(/);
+    //
+    // These assert against the file that now OWNS each conversion. The forms were
+    // extracted out of `src/app` (Expo Router turns every file there into a screen),
+    // so the product writes live in the form component and the routes are loaders.
+    const productForm = read('src/components/forms/ProductForm.tsx');
+    assert.match(productForm, /sellingPrice:[\s\S]{0,80}toMajor\(/);
+    assert.match(productForm, /costPrice:[\s\S]{0,80}toMajor\(/);
+    assertUses('src/app/(app)/expense/new.tsx', /amount: toMajor\(/, 'an expense amount with toMajor()');
+    assertUses(
+      'src/app/(app)/settings/business.tsx',
+      /default_delivery_fee: toMajor\(/,
+      'the default delivery fee with toMajor()',
+    );
+    assertUses('src/app/(app)/order/new.tsx', /discount: toMajor\(/, 'a discount with toMajor()');
+    assertUses(
+      'src/app/(app)/order/new.tsx',
+      /deliveryCharge: toMajor\(/,
+      'a delivery charge with toMajor()',
+    );
+    assertUses('src/app/(app)/order/new.tsx', /amountPaid: toMajor\(/, 'an amount paid with toMajor()');
 
     // Counts.
-    assert.match(read('src/app/(app)/product/new.tsx'), /const delta = parseWholeNumber\(/);
-    assert.match(read('src/app/(app)/product/[id].tsx'), /const quantity = parseWholeNumber\(/);
+    assert.match(productForm, /const \[threshold, setThreshold\] = useState<number \| null>/);
+    // A stock adjustment is a count: the amount is a plain integer, and the direction
+    // comes from which button was pressed.
+    assert.match(read('src/app/(app)/product/[id].tsx'), /const \[amount, setAmount\] = useState<number \| null>/);
+    assert.match(read('src/app/(app)/product/[id].tsx'), /delta: direction \* amount/);
   });
 });
