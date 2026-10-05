@@ -52,3 +52,7 @@ yarn-error.*
 
 .vercel
 .env*
+
+# Local device-verification credentials. Written by scripts/device-test-account.mjs so
+# on-device sign-in is possible; never committed.
+.device-test-account.json
