@@ -81,6 +81,25 @@ export default function AppLayout() {
       }}
     >
       <Stack.Screen name="(tabs)" />
+
+      {/*
+       * Detail and form routes.
+       *
+       * Pushed modals rather than pushed pages: a seller building an order wants
+       * the order list behind them, and a full slide makes the form feel like it is
+       * navigating away from the work. Forms are also the only routes that take an
+       * `id` parameter, and the one that does (`product/[id]/edit`) verifies below
+       * that the id belongs to this seller's tenant before it is used.
+       */}
+      <Stack.Screen name="order/new" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="order/[id]" />
+      <Stack.Screen name="product/new" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="product/[id]" />
+      <Stack.Screen name="product/[id]/edit" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="customer/new" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="customer/[id]" />
+      <Stack.Screen name="customer/[id]/edit" options={{ presentation: 'modal' }} />
+
       <Stack.Screen name="settings/account" />
       <Stack.Screen name="settings/business" />
       <Stack.Screen name="settings/appearance" />
