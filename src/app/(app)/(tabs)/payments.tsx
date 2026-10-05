@@ -13,9 +13,8 @@ import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Radio, Wallet } from 'lucide-react-native';
 
-import { Card, ErrorState, LoadingState, Screen, Skeleton, Text } from '@/components/ui';
-import { usePaymentAccounts, usePaymentActivity } from '@/features/payments/queries';
-import { providerLabel } from '@/features/payments/queries';
+import { Card, ErrorState, Screen, Skeleton, Text } from '@/components/ui';
+import { providerLabel, usePaymentAccounts, usePaymentActivity } from '@/features/payments/queries';
 import { formatMoney } from '@/lib/money';
 import { canWrite, useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';

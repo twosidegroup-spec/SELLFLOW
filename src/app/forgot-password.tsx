@@ -25,7 +25,7 @@ import { useRouter } from 'expo-router';
 import { MailCheck } from 'lucide-react-native';
 
 import { Button, Card, Input, Screen, Text } from '@/components/ui';
-import { getSupabase, isConfigured } from '@/lib/supabase';
+import { getSupabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/ThemeProvider';
 
 const SENT = 'sent';

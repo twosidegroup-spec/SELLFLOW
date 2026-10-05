@@ -12,12 +12,9 @@ import { Users } from 'lucide-react-native';
 import { ListScreen } from '@/components/ListScreen';
 import { Card, Text } from '@/components/ui';
 import { useCustomers } from '@/features/customers/queries';
-import { formatMoney } from '@/lib/money';
 import { canWrite, useSession } from '@/store/session';
-import { useTheme } from '@/theme/ThemeProvider';
 
 export default function CustomersScreen() {
-  const { spacing } = useTheme();
   const router = useRouter();
 
   const orgId = useSession((state) => state.organization?.id);

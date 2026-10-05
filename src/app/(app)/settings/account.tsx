@@ -12,11 +12,10 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Building2, ChevronRight, KeyRound, LogOut, Store } from 'lucide-react-native';
+import { Building2, ChevronRight, Store } from 'lucide-react-native';
 
 import SetPasscode from '../../set-passcode';
 import { Button, Card, Divider, Screen, Text } from '@/components/ui';
-import { hasPasscode } from '@/lib/passcode';
 import { getSupabase, isConfigured } from '@/lib/supabase';
 import { useLock } from '@/store/lock';
 import { useSession } from '@/store/session';

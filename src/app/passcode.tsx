@@ -38,10 +38,9 @@ import { useTheme } from '@/theme/ThemeProvider';
 
 export default function PasscodeScreen() {
   const router = useRouter();
-  const { spacing, colors } = useTheme();
+  const { spacing } = useTheme();
 
   const user = useSession((state) => state.user);
-  const isLocked = useLock((state) => state.isLocked);
 
   const [length, setLength] = useState<PasscodeLength>(4);
   const [value, setValue] = useState('');

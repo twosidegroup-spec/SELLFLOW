@@ -18,7 +18,6 @@
 
 import { useCallback, useState } from 'react';
 import { View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { ShieldCheck } from 'lucide-react-native';
 
 import { Button, Card, ErrorState, LoadingState, PasscodeKeypad, Screen, Text } from '@/components/ui';
