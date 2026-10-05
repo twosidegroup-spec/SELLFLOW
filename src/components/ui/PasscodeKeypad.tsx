@@ -43,8 +43,17 @@ export interface PasscodeKeypadProps {
   length: 4 | 6;
   value: string;
   onChange: (next: string) => void;
-  /** Return true when `value` is complete and should be verified. */
-  onComplete: (value: string) => boolean | void;
+/**
+   * Called when `value` reaches exactly `length` digits.
+   *
+   * May be async: the screen verifies the passcode against the keystore, which is
+   * a real I/O round trip. The keypad does not await it and does not lock itself
+   * during it -- the screen owns the `disabled` flag and is the thing that knows
+   * whether a verification is still in flight. Firing and forgetting here is
+   * deliberate: blocking input on a promise the keypad does not own is how a
+   * keypad ends up permanently unresponsive after one slow write.
+   */
+  onComplete: (value: string) => void | Promise<void>;
   disabled?: boolean;
   /** Wrong passcode. Triggers the shake; may repeat on the same value. */
   invalid?: boolean;
@@ -76,10 +85,11 @@ export function PasscodeKeypad({
     // produce a 7th digit that the hash then rejects.
     if (value.length >= length) return;
 
-    const next = value + key;
+const next = value + key;
     onChange(next);
-    // Exactly `length` digits, and not one fewer or one more.
-    if (next.length === length) onComplete(next);
+    // Exactly `length` digits, and not one fewer or one more. Not awaited: see
+    // `onComplete` above.
+    if (next.length === length) void onComplete(next);
   };
 
   return (

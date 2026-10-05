@@ -20,22 +20,29 @@
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Check, ChevronLeft, Smartphone } from 'lucide-react-native';
+import { Check, ChevronLeft } from 'lucide-react-native';
 
 import { Button, Card, Input, Screen, Text } from '@/components/ui';
 import { SectionHeader } from '@/components/ui/Card';
+import { isBdMobileNumber, normalizeBdNumber } from '@/features/payments/normalize';
+import { providerLabel } from '@/features/payments/queries';
+import { createRegistrationDeps } from '@/features/registration/deps';
 import {
   buildAccountPlan,
   hasErrors,
   MIN_PASSWORD,
   REGISTRATION_PROVIDERS,
+  runRegistration,
   validateRegistration,
+  type RegistrationOutcome,
   type RegistrationPlan,
 } from '@/features/registration/plan';
-import { isBdMobileNumber, normalizeBdNumber } from '@/features/payments/normalize';
-import { providerLabel } from '@/features/payments/queries';
 import type { PaymentProvider } from '@/lib/database.types';
+import { useSession } from '@/store/session';
+import { useLock } from '@/store/lock';
 import { useTheme } from '@/theme/ThemeProvider';
+
+import SetPasscode from './set-passcode';
 
 type Step = 'identity' | 'payments' | 'passcode';
 
@@ -43,7 +50,31 @@ const STEPS: Step[] = ['identity', 'payments', 'passcode'];
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { colors, spacing } = useTheme();
+  const { spacing } = useTheme();
+
+  const setPasscode = useLock((state) => state.setPasscode);
+  const refreshWorkspace = useSession((state) => state.refreshWorkspace);
+
+  /*
+   * The passcode captured on the final step, held here rather than passed through
+   * the plan. `runRegistration` writes it through a closure, so the raw value never
+   * reaches the plan object, an RPC argument, or a log line.
+   */
+  const [passcode, setPasscodeValue] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  /*
+   * What a partial attempt already created. Registration's first two stages are
+   * irreversible -- the auth user and the business both exist once created -- so a
+   * retry must not re-run them blindly. Re-running `signUp` would fail on the
+   * unique email, and re-running `bootstrap_business` would at best be idempotent
+   * and at worst risk a second business. These ids are threaded through so a retry
+   * touches only what is still missing.
+   */
+  const [progress, setProgress] = useState<{ userId: string | null; orgId: string | null }>({
+    userId: null,
+    orgId: null,
+  });
 
   const [step, setStep] = useState<Step>('identity');
   const [fullName, setFullName] = useState('');
@@ -102,6 +133,65 @@ export default function RegisterScreen() {
   const connected = plan.accounts.length;
   const paymentError = connected === 0 ? 'Connect at least one payment method to continue.' : allErrors.accounts;
 
+  const submit = async () => {
+    setSubmitting(true);
+    setFailure(null);
+
+    const deps = createRegistrationDeps({
+      plan: { email, password, fullName, businessName, storeName: null },
+      // The closure reads `passcode` from this scope. The raw value is therefore
+      // never an argument to anything, so it cannot end up in an RPC payload, a
+      // query log, or an error message.
+      setPasscode: async () => {
+        if (!progress.userId) return;
+        await setPasscode(progress.userId, passcode, [4, 6]);
+      },
+      refreshWorkspace,
+    });
+
+    try {
+      const outcome = await runRegistration({
+        plan: { ...plan, passcode },
+        deps,
+        existingUserId: progress.userId,
+        existingOrgId: progress.orgId,
+        alreadyConnected: [],
+      });
+
+      // Remember what exists so a retry after a mid-flight failure does not attempt
+      // to create the account or the business a second time.
+      setProgress({ userId: outcome.userId, orgId: outcome.orgId });
+
+      if (outcome.ok) {
+        finish(outcome);
+        return;
+      }
+
+      setFailure(outcome.message ?? 'Something went wrong. Your details were kept.');
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : 'Something went wrong.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /**
+   * Reports exactly what the backend confirmed.
+   *
+   * Automation is named from `outcome.automation`, which is derived in `plan.ts`
+   * from a confirmed account, the OS permission and the platform -- never from
+   * intent. A seller is never told automation is on because they tapped Continue.
+   */
+  const finish = (outcome: RegistrationOutcome) => {
+    router.replace({
+      pathname: '/setup-complete',
+      params: {
+        connected: outcome.connected.join(','),
+        automation: outcome.automation,
+      },
+    });
+  };
+
   const goNext = () => {
     const next = STEPS[stepIndex + 1];
     if (next) setStep(next);
@@ -132,18 +222,10 @@ export default function RegisterScreen() {
           </Text>
         </View>
       }
-      footer={
-        step === 'passcode' ? (
+footer={
+        step === 'passcode' ? undefined : (
           <Button
-            label="Create my business"
-            size="lg"
-            fullWidth
-            onPress={() => router.replace('/(app)')}
-            testID="register-submit"
-          />
-        ) : (
-          <Button
-            label={step === 'identity' ? 'Continue' : 'Continue'}
+            label="Continue"
             size="lg"
             fullWidth
             disabled={step === 'identity' && hasErrors(stepErrors)}
@@ -253,27 +335,19 @@ export default function RegisterScreen() {
         </View>
       ) : null}
 
-      {step === 'passcode' ? (
-        <View style={{ gap: spacing.lg }}>
-          <View style={{ gap: spacing.xs }}>
-            <Text variant="title">One last thing</Text>
-            <Text variant="body" tone="secondary">
-              Your business is nearly ready. Payment automation is optional and can be switched on
-              from Settings whenever you want.
-            </Text>
-          </View>
-
-          <Card>
-            <View style={{ gap: spacing.sm, alignItems: 'flex-start' }}>
-              <Smartphone size={20} color={colors.primary} strokeWidth={1.75} />
-              <Text variant="bodyStrong">No merchant account needed</Text>
-              <Text variant="body" tone="secondary">
-                SellFlow reads your bKash, Nagad and Rocket notifications to match a payment to an
-                order. It never opens your inbox and never stores message text.
-              </Text>
-            </View>
-          </Card>
-        </View>
+{step === 'passcode' ? (
+        <SetPasscode
+          optional
+          busy={submitting}
+          error={failure}
+          onSet={async (digits) => {
+            // Held in state, not written yet. `submit` persists it through the
+            // deps closure, which only runs once there is a user id to key the
+            // keystore record by.
+            setPasscodeValue(digits);
+          }}
+          onDone={() => void submit()}
+        />
       ) : null}
     </Screen>
   );
