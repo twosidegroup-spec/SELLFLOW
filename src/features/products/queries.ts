@@ -11,7 +11,7 @@ import { useState } from 'react';
 import type { InventoryRow, ProductRow } from '@/lib/database.types';
 import { keys } from '@/lib/queryClient';
 import { getSupabase } from '@/lib/supabase';
-import { useDebouncedValue } from '@/components/ui';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 export interface ProductWithStock extends ProductRow {
   quantity: number;

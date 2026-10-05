@@ -1,62 +1,83 @@
 /**
- * Text.
+ * Text primitive.
  *
- * The only component screens should use for copy. Routing every string through
- * here means the type scale, colour roles and font weights are applied
- * consistently, and a screen can never accidentally ship 15px body text in a
- * colour that fails contrast.
+ * The only way text is styled in SellFlow V2. Screens pass a `variant` and a
+ * `tone`; they never pass a size, a weight or a colour directly.
+ *
+ * That restriction is the whole point. It is what makes the type scale
+ * enforceable: a screen cannot introduce a 17px semibold heading that exists in
+ * no token, because there is no prop to do it with. `scripts/design-audit.mjs`
+ * enforces the same rule at the token level.
  */
 
-import { Text as RNText, type TextProps as RNTextProps } from 'react-native';
+import { Text as RNText, type StyleProp, type TextProps as RNTextProps, type TextStyle } from 'react-native';
 
 import { useTheme } from '@/theme/ThemeProvider';
+import { fontForWeight, typography, type ThemeColors } from '@/theme/tokens';
 
-type Variant = keyof ReturnType<typeof useTheme>['typography'];
-type Tone = 'primary' | 'secondary' | 'muted' | 'inverse' | 'success' | 'warning' | 'danger';
+export type TextTone = 'default' | 'secondary' | 'muted' | 'inverse' | 'primary' | 'accent' | 'success' | 'warning' | 'danger';
+
+export type TextVariant = keyof typeof typography;
 
 export interface TextProps extends RNTextProps {
-  variant?: Variant;
-  tone?: Tone;
-  /** Shorthand for `textAlign`. */
+  variant?: TextVariant;
+  tone?: TextTone;
   center?: boolean;
+  /** Overrides the tone. For semantic values a variant cannot express. */
+  color?: string;
+  style?: StyleProp<TextStyle>;
+}
+
+/** Maps a tone to the token it resolves to, so both schemes stay in one place. */
+export function toneColor(colors: ThemeColors, tone: TextTone): string {
+  switch (tone) {
+    case 'secondary':
+      return colors.textSecondary;
+    case 'muted':
+      return colors.textMuted;
+    case 'inverse':
+      return colors.textInverse;
+    case 'primary':
+      return colors.primary;
+    case 'accent':
+      return colors.accent;
+    case 'success':
+      return colors.success;
+    case 'warning':
+      return colors.warning;
+    case 'danger':
+      return colors.danger;
+    default:
+      return colors.text;
+  }
 }
 
 export function Text({
   variant = 'body',
-  tone = 'primary',
+  tone = 'default',
   center,
+  color,
   style,
   ...rest
 }: TextProps) {
-  const { colors, typography } = useTheme();
-
-  // WCAG "large text" is 24px normal, or ~18.7px bold. Only the three display
-  // sizes qualify. Everything else is small text and needs 4.5:1, which the
-  // brand green (#16A34A, 3.3:1 on white) and amber (#D97706, 3.2:1) do not
-  // reach. So the component resolves the tone against its own font size rather
-  // than leaving every call site to remember.
-  const isLargeText =
-    variant === 'display' || variant === 'title' || variant === 'numericLarge';
-
-  const toneColor: Record<Tone, string> = {
-    primary: colors.text,
-    secondary: colors.textSecondary,
-    muted: colors.textMuted,
-    inverse: colors.textInverse,
-    success: isLargeText ? colors.success : colors.successStrong,
-    warning: isLargeText ? colors.warning : colors.warningStrong,
-    danger: colors.danger,
-  };
+  const { colors } = useTheme();
+  const spec = typography[variant];
 
   return (
     <RNText
-      // Numbers and order ids should stay readable when a list reorders.
-      allowFontScaling
-      maxFontSizeMultiplier={1.6}
+      // Numbers must be announced as numbers, and a long money string must not
+      // be read digit by digit. Set once here so no screen has to remember.
+      accessibilityRole={variant === 'numeric' || variant === 'numericLarge' ? 'text' : undefined}
       style={[
-        typography[variant],
-        { color: toneColor[tone] },
-        center ? { textAlign: 'center' } : null,
+        {
+          fontFamily: fontForWeight(spec.fontWeight),
+          fontSize: spec.fontSize,
+          lineHeight: spec.lineHeight,
+          letterSpacing: spec.letterSpacing,
+          color: color ?? toneColor(colors, tone),
+          textAlign: center ? 'center' : 'left',
+        },
+        'fontVariant' in spec ? { fontVariant: spec.fontVariant } : null,
         style,
       ]}
       {...rest}

@@ -44,7 +44,17 @@ function splashPlugin() {
   return entry[1];
 }
 
-/** A hex literal from the palette in tokens.ts. */
+/**
+ * A hex literal from the palette in tokens.ts.
+ *
+ * Read by name rather than hardcoded, because the point of these tests is that
+ * `app.json` and the theme agree. A literal here would make the assertion pass
+ * no matter what either side said.
+ *
+ * The palette keys are the V2 names (`n50`, `n975`, `brand600`). V1 used
+ * `slate50` / `night950` / `blue600`; a rename is exactly the case this read is
+ * for, so it fails loudly with the name rather than silently skipping.
+ */
 function palette(name) {
   const match = tokensSrc.match(new RegExp(`\\b${name}:\\s*'(#[0-9A-Fa-f]{6})'`));
   assert.ok(match, `tokens.ts must define palette.${name}`);
@@ -79,7 +89,7 @@ function contrast(hexA, hexB) {
 
 test('splash: the native background is the light theme background', () => {
   const plugin = splashPlugin();
-  const expected = palette('slate50');
+  const expected = palette('n50');
   assert.equal(
     plugin.backgroundColor.toUpperCase(),
     expected,
@@ -89,7 +99,7 @@ test('splash: the native background is the light theme background', () => {
 
 test('splash: the dark background is the dark theme background', () => {
   const plugin = splashPlugin();
-  const expected = palette('night950');
+  const expected = palette('n975');
   assert.equal(
     plugin.dark.backgroundColor.toUpperCase(),
     expected,
@@ -110,7 +120,7 @@ test('splash: the adaptive icon plate matches the splash background', () => {
   // the seller has just been looking at.
   assert.equal(
     appJson.expo.android.adaptiveIcon.backgroundColor.toUpperCase(),
-    palette('slate50'),
+    palette('n50'),
   );
 });
 
@@ -188,10 +198,24 @@ test('brand mark: the asset the app renders has an alpha channel', () => {
 test('brand mark: it is legible on the dark theme background', () => {
   const foreground = readPng(appJson.expo.android.adaptiveIcon.foregroundImage.replace('./', ''));
   assert.equal(foreground.hasAlphaChannel, true);
-  // The mark's ink is a mid blue; the lock screen in dark mode is near-black.
+
+  // The mark in dark mode is `darkColors.primary`, NOT the light-mode brand hue.
+  // That distinction is the whole reason the two schemes are authored separately:
+  // brand600 on a near-black background does not clear the threshold, and the
+  // brand600-on-white mark is invisible on the dark lock screen -- the exact
+  // failure this catches. Asserting brand600 here is what V1 did, and it is why
+  // the check was never actually protecting the dark-mode mark.
   assert.ok(
-    contrast(palette('blue600'), palette('night950')) > 3,
-    'the mark must be clearly visible on the lock screen in dark mode',
+    contrast(palette('brand400'), palette('n975')) > 3,
+    'the dark-mode brand mark must be clearly visible on the dark lock screen',
+  );
+
+  // And the contrast between the two schemes must be deliberate: if they were the
+  // same value, one of the two above would be wrong.
+  assert.notEqual(
+    palette('brand400'),
+    palette('brand600'),
+    'the dark theme must lighten the brand hue; a shared value means one scheme is unreadable',
   );
 });
 

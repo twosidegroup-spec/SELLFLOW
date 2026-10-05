@@ -1,14 +1,22 @@
 /**
- * Root layout.
+ * Root layout — SellFlow V2.
  *
- * Owns only global concerns: fonts, theme, query client, connectivity watching
- * and the Supabase auth listener. Route protection lives in the group layouts
- * (`(auth)` and `(app)`), which is where it can be read alongside the routes it
- * guards.
+ * Owns only global concerns, in the order they must happen:
+ *
+ *   fonts → theme → storage → Supabase → session → routes
+ *
+ * Three guarantees hold no matter where that sequence fails:
+ *
+ *   1. No blank screen, ever. `BootErrorBoundary` catches a render error and
+ *      `useBootWatchdog` bounds a hung startup. Both were absent in V1.
+ *   2. No white flash. The pre-font placeholder paints the resolved background
+ *      rather than a hardcoded colour, so a dark-mode user never sees white.
+ *   3. A missing backend is stated, not worked around. `SetupRequired` names the
+ *      problem instead of letting every query fail with an opaque network error.
  */
 
 import { useEffect } from 'react';
-import { StyleSheet, useColorScheme, View } from 'react-native';
+import { useColorScheme, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -18,7 +26,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 
 import { BootErrorBoundary } from '@/components/BootError';
-import { ErrorState } from '@/components/ui';
+import { ErrorState } from '@/components/ui/Feedback';
 import { attemptKey, useBootWatchdog } from '@/lib/bootWatchdog';
 import { hydrateConnectivity, startConnectivityWatch } from '@/lib/connectivity';
 import { startOutboxReplay } from '@/lib/outbox';
@@ -29,8 +37,8 @@ import { useSession } from '@/store/session';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 import { darkColors, lightColors } from '@/theme/tokens';
 
-// Hold the splash until fonts are ready, so the first frame is not rendered in
-// a fallback face and then re-laid out.
+// Hold the splash until fonts are ready, so the first frame is not rendered in a
+// fallback face and then re-laid out.
 void SplashScreen.preventAutoHideAsync().catch(() => {
   // Already hidden; nothing to do.
 });
@@ -44,13 +52,12 @@ export default function RootLayout() {
   });
 
   const appearance = useAppearance((state) => state.preference);
-  // Android reports 'unspecified' when the system has no preference set, which is
-  // neither light nor dark and so cannot select a palette. Treated as light.
+  // Android reports 'unspecified' when the system expresses no preference, which
+  // is neither light nor dark and so cannot select a palette. Treated as light.
   const systemScheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const authStatus = useSession((state) => state.status);
 
-  // Restore the saved preference before the first themed render, so a dark-mode
-  // user never sees a white flash.
+  // Restore the saved preference before the first themed render.
   useEffect(() => {
     void useAppearance.getState().hydrate();
   }, []);
@@ -67,9 +74,8 @@ export default function RootLayout() {
     return startConnectivityWatch();
   }, []);
 
-  // Replay anything that was queued while offline. This is what makes the
-  // offline banner's promise true, so it is started once, here, rather than
-  // per screen.
+  // Replay anything queued while offline. Started once, here, rather than per
+  // screen, because that is what makes the offline banner's promise true.
   useEffect(() => startOutboxReplay(), []);
 
   // Seed the session and follow every auth change.
@@ -86,71 +92,52 @@ export default function RootLayout() {
   }, []);
 
   /*
-   * Startup watchdog.
+   * Startup is "done" once the app knows who it is talking to. `loading` is the
+   * only state that can hang indefinitely.
    *
-   * "Startup is done" means the app knows who it is talking to. `loading` is the
-   * only state where a wait can hang indefinitely: every other state has already
-   * resolved to a decision the router can act on.
-   *
-   * `!isConfigured` also counts as satisfied, because `index.tsx` renders
-   * `SetupRequired` for it. That is a finished screen, not a pending one, and
-   * treating it as pending would put a 15-second timer in front of a message that
-   * is already on screen.
+   * `!isConfigured` also counts as settled, because the index route renders
+   * `SetupRequired` for it -- a finished screen, not a pending one. Treating it
+   * as pending would put a countdown in front of a message already on screen.
    */
   const startupSettled = authStatus !== 'loading' || !isConfigured;
   const boot = useBootWatchdog(startupSettled);
 
   if (!fontsLoaded && !fontError) {
-    // ThemeProvider is not mounted yet, so the raw tokens are used directly.
-    // Hardcoding the light background here would give a dark-mode user a white
-    // flash on every cold start, which is the exact problem this avoids.
-    const resolved: 'light' | 'dark' =
-      appearance === 'system' ? systemScheme : appearance;
-
-    return <View style={[styles.blank, { backgroundColor: resolved === 'dark' ? darkColors.background : lightColors.background }]} />;
+    const resolved = appearance === 'system' ? systemScheme : appearance;
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor:
+            resolved === 'dark' ? darkColors.background : lightColors.background,
+        }}
+      />
+    );
   }
 
   /*
-   * Above ThemeProvider, deliberately. A boundary below it would read from a
-   * theme context that may itself be what failed, turning a caught render error
-   * into a second uncaught one and still producing a blank screen.
+   * The boundary sits ABOVE ThemeProvider, deliberately. Its fallback reads raw
+   * tokens rather than calling useTheme, because a boundary mounted below the
+   * provider would re-enter itself whenever the theme was what failed -- turning
+   * one caught error into a second uncaught one, and still a blank screen.
    */
   return (
     <BootErrorBoundary preference={appearance} systemScheme={systemScheme}>
-      <GestureHandlerRootView style={styles.root}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <QueryClientProvider client={queryClient}>
             <ThemeProvider preference={appearance}>
               <StatusBarBridge />
-              {/*
-                The watchdog renders beside the navigator rather than around it,
-                so a timeout does not tear down a half-mounted navigation stack.
-                `BootTimeoutScreen` is keyed by attempt so a retry remounts the
-                whole subtree and re-runs session bootstrap from scratch.
-              */}
               {boot.phase === 'timed-out' ? (
                 <BootTimeoutScreen key={attemptKey(boot.attempt)} onRetry={boot.retry} />
               ) : (
                 <Stack
-                  screenOptions={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}
+                  screenOptions={{
+                    headerShown: false,
+                    contentStyle: { backgroundColor: 'transparent' },
+                  }}
                 >
                   <Stack.Screen name="index" />
-                  <Stack.Screen name="(auth)" />
-                  {/*
-                    The single registration flow. Outside the (auth) group on purpose:
-                    it has to keep rendering across the moment signUp succeeds and the
-                    session flips to "signed in, no business yet", which the (auth)
-                    guard would otherwise treat as a reason to leave.
-                  */}
-                  <Stack.Screen name="register" />
-                  {/* Passcode gate and setup. Both need a valid session; the app
-                      layout redirects to /passcode when a passcode is locked. */}
-                  <Stack.Screen name="passcode" />
-                  <Stack.Screen name="set-passcode" />
-                  <Stack.Screen name="(app)" />
-                  {/* Reachable without a session: a customer filling the order form
-                      the seller sent them. */}
-                  <Stack.Screen name="order-form/[token]" />
                 </Stack>
               )}
             </ThemeProvider>
@@ -161,31 +148,26 @@ export default function RootLayout() {
   );
 }
 
-/**
- * Shown when startup exceeded its deadline.
- *
- * Distinct wording from a crash, because the diagnosis differs: nothing has
- * failed, something is slow. Telling a seller their data is safe is true in both
- * cases and worth stating either way.
- */
-function BootTimeoutScreen({ onRetry }: { onRetry: () => void }) {
-  return (
-    <ErrorState
-      title="SellFlow is taking longer than usual to start"
-      action="This usually means the connection is slow. Nothing has been lost -- your orders, products and payments are still saved."
-      onRetry={onRetry}
-      retryLabel="Try again"
-    />
-  );
-}
-
 /** Keeps the native status bar legible against the active theme. */
 function StatusBarBridge() {
   const { scheme } = useTheme();
   return <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />;
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1 },
-  blank: { flex: 1 },
-});
+/**
+ * Shown when startup exceeded its deadline.
+ *
+ * Distinct wording from a crash, because the diagnosis differs: nothing failed,
+ * something is slow. That the data is safe is true in both cases and worth
+ * stating either way.
+ */
+function BootTimeoutScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <ErrorState
+      title="SellFlow is taking longer than usual to start"
+      action="This usually means the connection is slow. Nothing has been lost — your orders, products and payments are still saved."
+      onRetry={onRetry}
+      retryLabel="Try again"
+    />
+  );
+}

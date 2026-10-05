@@ -13,7 +13,7 @@ import type { CustomerRow, Database } from '@/lib/database.types';
 import { AppError } from '@/lib/errors';
 import { keys } from '@/lib/queryClient';
 import { getSupabase } from '@/lib/supabase';
-import { useDebouncedValue } from '@/components/ui';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 const PAGE_SIZE = 25;
 

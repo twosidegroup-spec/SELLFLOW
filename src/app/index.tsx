@@ -1,15 +1,21 @@
 /**
- * Entry route.
+ * Entry route — SellFlow V2.
  *
- * Decides where to send the user based on session state. While the session is
- * being restored we hold here with a loading state rather than letting the
- * guard layouts flicker between "loading" and "signed out".
+ * Decides where to send the seller from session state, and is the first thing
+ * that renders. Every branch produces a real screen:
  *
- * `workspace-unavailable` is a distinct state on purpose. It means the session
- * is valid but the business behind it could not be read, which is a connection
- * or backend problem and not an authentication one. Redirecting it to sign-in
- * would tell a seller their password was wrong when it was not, and would
- * throw away the screen they were on. It gets its own screen with a retry.
+ *   no backend configured -> SetupRequired   (names the problem)
+ *   still resolving      -> LoadingState
+ *   business unreachable -> ErrorState + retry
+ *   signed out           -> /welcome
+ *   no business yet      -> /register
+ *   ready                -> /(app)
+ *
+ * There is no branch that renders nothing. `workspace-unavailable` is a distinct
+ * state on purpose: the session is valid but the business behind it could not be
+ * read, which is a connection problem, not an authentication one. Redirecting it
+ * to a sign-in form would tell a seller their password was wrong when it was not,
+ * and would throw away the screen they were standing on.
  */
 
 import { Redirect } from 'expo-router';
@@ -23,11 +29,7 @@ export default function Index() {
   const refreshWorkspace = useSession((state) => state.refreshWorkspace);
   const workspaceError = useSession((state) => state.workspaceError);
 
-  // No backend means nothing can be saved. Say so rather than offering an app
-  // that silently discards the seller's work.
-  if (!isConfigured) {
-    return <SetupRequired />;
-  }
+  if (!isConfigured) return <SetupRequired />;
 
   if (status === 'loading') {
     return <LoadingState label="Loading your business" />;
@@ -43,13 +45,8 @@ export default function Index() {
     );
   }
 
-  if (status === 'signed-out') {
-    return <Redirect href="/sign-in" />;
-  }
-
-  if (status === 'needs-onboarding') {
-    return <Redirect href="/register" />;
-  }
+  if (status === 'signed-out') return <Redirect href="/welcome" />;
+  if (status === 'needs-onboarding') return <Redirect href="/register" />;
 
   return <Redirect href="/(app)" />;
 }

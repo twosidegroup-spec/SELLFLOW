@@ -1,19 +1,26 @@
 /**
- * Button.
+ * Button primitive.
  *
- * Press feedback is a scale-down plus opacity rather than a ripple: it reads
- * the same on both platforms, works identically inside scroll views and
- * bottom sheets, and stays interruptible. Every button clears the 44pt minimum
- * touch target at every size.
+ * One component for every tappable action, so that press feedback, disabled
+ * handling and the accessibility contract are decided once rather than per
+ * screen.
+ *
+ * ACCESSIBILITY
+ *
+ * A disabled button sets `accessibilityState` and `aria-disabled`, and stays
+ * focusable, so a screen reader still reaches it and can explain why it cannot be
+ * pressed. Making it unfocusable would leave a seller with a button that has
+ * silently vanished from the tab order and no explanation.
+ *
+ * `minHeight` comes from `touchTarget`, never from a screen.
  */
 
-import { forwardRef } from 'react';
+import { useCallback } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
   View,
-  type PressableProps,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -22,126 +29,118 @@ import type { LucideIcon } from 'lucide-react-native';
 import { useTheme } from '@/theme/ThemeProvider';
 import { Text } from './Text';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
-export type ButtonSize = 'sm' | 'md' | 'lg';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent';
+export type ButtonSize = 'md' | 'lg';
 
-export interface ButtonProps extends Omit<PressableProps, 'children' | 'style'> {
+export interface ButtonProps {
   label: string;
+  onPress?: () => void;
   variant?: ButtonVariant;
   size?: ButtonSize;
-  icon?: LucideIcon;
-  iconPosition?: 'leading' | 'trailing';
+  disabled?: boolean;
   loading?: boolean;
-  /** Stretches to the container width. Default for form submit buttons. */
-  block?: boolean;
-  full?: boolean;
+  icon?: LucideIcon;
+  /** Trailing icon, for a "next step" affordance. */
+  iconRight?: LucideIcon;
+  fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
+  accessibilityHint?: string;
 }
 
-const HEIGHTS: Record<ButtonSize, number> = { sm: 40, md: 46, lg: 52 };
+export function Button({
+  label,
+  onPress,
+  variant = 'primary',
+  size = 'md',
+  disabled = false,
+  loading = false,
+  icon: Icon,
+  iconRight: IconRight,
+  fullWidth = false,
+  style,
+  testID,
+  accessibilityHint,
+}: ButtonProps) {
+  const { colors, radius, spacing, touchTarget } = useTheme();
 
-export const Button = forwardRef<View, ButtonProps>(function Button(
-  {
-    label,
-    variant = 'primary',
-    size = 'md',
-    icon: Icon,
-    iconPosition = 'leading',
-    loading = false,
-    block = false,
-    full = false,
-    disabled,
-    style,
-    ...rest
-  },
-  ref,
-) {
-  const { colors, radius, spacing, typography } = useTheme();
-  // A loading button must not be re-triggerable; treat it as disabled so the
-  // label does not shift or the handler fire twice.
-  const isDisabled = disabled || loading;
+  // A loading button is disabled. Without this, a seller can tap "Record payment"
+  // twice while the first write is in flight.
+  const inert = disabled || loading;
 
-  const palette: Record<ButtonVariant, { bg: string; pressed: string; fg: string; border?: string }> = {
-    primary: { bg: colors.primary, pressed: colors.primaryPressed, fg: colors.onPrimary },
-    secondary: { bg: 'transparent', pressed: colors.pressed, fg: colors.primary, border: colors.border },
-    ghost: { bg: 'transparent', pressed: colors.pressed, fg: colors.textSecondary },
-    danger: { bg: colors.danger, pressed: colors.danger, fg: colors.onAccent },
-    // `successStrong`, not `success`: the brand green only reaches 3.3:1 as
-    // white text on white, so a solid success button label would be unreadable.
-    success: { bg: colors.successStrong, pressed: colors.successStrong, fg: colors.onAccent },
+  const height = size === 'lg' ? touchTarget.comfortable : touchTarget.min;
+
+  const surface: Record<ButtonVariant, { bg: string; fg: string; border: string }> = {
+    primary: { bg: colors.primary, fg: colors.onPrimary, border: colors.primary },
+    accent: { bg: colors.accent, fg: colors.onAccent, border: colors.accent },
+    secondary: { bg: colors.surface, fg: colors.text, border: colors.borderStrong },
+    ghost: { bg: 'transparent', fg: colors.primary, border: 'transparent' },
+    danger: { bg: colors.danger, fg: colors.onDanger, border: colors.danger },
   };
 
-  const tone = palette[variant];
-  const height = HEIGHTS[size];
-  const iconSize = size === 'sm' ? 16 : 20;
+  const { bg, fg, border } = surface[variant];
 
-  // Solid accents take `onAccent`, which flips to near-black in dark mode so
-  // the label stays readable on the lightened success/warning colours.
-  const usesAccent = variant === 'danger' || variant === 'success';
-  const foreground = usesAccent ? colors.onAccent : tone.fg;
-
-  const content = (
-    <>
-      {loading ? (
-        <ActivityIndicator size="small" color={foreground} />
-      ) : (
-        <View style={[styles.row, { gap: spacing.xs }]}>
-          {Icon && iconPosition === 'leading' ? <Icon size={iconSize} color={foreground} strokeWidth={2} /> : null}
-          <Text
-            numberOfLines={1}
-            style={[
-              typography.subtitle,
-              { color: foreground, fontSize: size === 'sm' ? 14 : 15 },
-            ]}
-          >
-            {label}
-          </Text>
-          {Icon && iconPosition === 'trailing' ? <Icon size={iconSize} color={foreground} strokeWidth={2} /> : null}
-        </View>
-      )}
-    </>
-  );
+  const handlePress = useCallback(() => {
+    if (inert) return;
+    onPress?.();
+  }, [inert, onPress]);
 
   return (
     <Pressable
-      ref={ref}
+      onPress={handlePress}
+      disabled={inert}
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled: isDisabled, busy: loading }}
-      disabled={isDisabled}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: inert, busy: loading }}
+      // 0.5 rather than a hard disable so a disabled button still reads as a
+      // button that is unavailable, which is different from something absent.
       style={({ pressed }) => [
         styles.base,
         {
-          height,
+          minHeight: height,
+          paddingHorizontal: spacing.md,
           borderRadius: radius.control,
-          backgroundColor: tone.bg,
-          borderWidth: tone.border ? 1 : 0,
-          borderColor: tone.border,
-          opacity: isDisabled ? 0.45 : pressed ? 0.75 : 1,
-          // Only stretch when asked. Setting `alignSelf: 'flex-start'` as the
-          // default silently overrode a centred parent, so a button inside an
-          // `EmptyState` or `ErrorState` sat hard against the left edge while
-          // the copy above it was centred.
-          ...(block || full ? { alignSelf: 'stretch' as const } : null),
-          paddingHorizontal: size === 'sm' ? spacing.md : spacing.lg,
+          backgroundColor: bg,
+          borderColor: border,
+          borderWidth: variant === 'ghost' ? 0 : 1,
+          opacity: disabled ? 0.45 : pressed && !loading ? 0.85 : 1,
         },
-        pressed && !isDisabled ? { transform: [{ scale: 0.98 }] } : null,
+        fullWidth && styles.fullWidth,
         style,
       ]}
-      {...rest}
     >
-      {content}
+      <View style={styles.content}>
+        {loading ? (
+          <ActivityIndicator size="small" color={fg} style={{ marginRight: spacing.xs }} />
+        ) : Icon ? (
+          <Icon size={18} color={fg} strokeWidth={2} style={{ marginRight: spacing.xs }} />
+        ) : null}
+
+        <Text variant="bodyStrong" color={fg} numberOfLines={1}>
+          {label}
+        </Text>
+
+        {IconRight && !loading ? (
+          <IconRight size={18} color={fg} strokeWidth={2} style={{ marginLeft: spacing.xs }} />
+        ) : null}
+      </View>
     </Pressable>
   );
-});
+}
 
 const styles = StyleSheet.create({
   base: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  row: {
+  fullWidth: {
+    alignSelf: 'stretch',
+  },
+  content: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
 });

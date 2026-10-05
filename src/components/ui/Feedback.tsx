@@ -1,13 +1,19 @@
 /**
  * Loading, empty and error states.
  *
- * Requirement: never leave the user staring at a blank screen, and never show a
- * spinner everywhere. Skeletons preserve the layout of the content that is
- * loading, which stops the page from jumping when data arrives.
+ * The rule these exist to enforce: a screen must never leave a seller staring at
+ * nothing, and must never invent data to fill the space. There is no spinner
+ * everywhere -- `Skeleton` preserves the shape of the content that is loading so
+ * the layout does not jump when data arrives.
+ *
+ * Every full-screen state paints its own background. These render as a route's
+ * entire output rather than inside a `Screen`, so without an explicit background
+ * they inherit whatever is behind them and themed text lands on the wrong
+ * surface.
  */
 
-import { ActivityIndicator, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { Database } from 'lucide-react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Database, Inbox, TriangleAlert } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 
 import { useTheme } from '@/theme/ThemeProvider';
@@ -52,9 +58,9 @@ export function Skeleton({
 export function ListRowSkeleton() {
   const { spacing, radius } = useTheme();
   return (
-    <View style={[styles.rowSkeleton, { paddingVertical: spacing.sm, gap: spacing.sm }]}>
-      <Skeleton width={40} height={40} borderRadius={radius.control} />
-      <View style={styles.rowSkeletonBody}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, gap: spacing.sm }}>
+      <Skeleton width={40} height={40} borderRadius={radius.pill} />
+      <View style={{ flex: 1, gap: spacing.xxs }}>
         <Skeleton width="55%" height={14} />
         <Skeleton width="35%" height={12} />
       </View>
@@ -63,11 +69,11 @@ export function ListRowSkeleton() {
   );
 }
 
-/** Placeholder for a dashboard metric tile. */
+/** Placeholder for a dashboard metric. */
 export function StatSkeleton({ width = '48%' }: { width?: number | `${number}%` }) {
   const { spacing } = useTheme();
   return (
-    <View style={{ width, gap: spacing.xs, paddingVertical: spacing.xs }}>
+    <View style={{ width, gap: spacing.xxs, paddingVertical: spacing.xxs }}>
       <Skeleton width="60%" height={12} />
       <Skeleton width="80%" height={26} />
     </View>
@@ -78,9 +84,16 @@ export function StatSkeleton({ width = '48%' }: { width?: number | `${number}%` 
 // Empty state
 // ---------------------------------------------------------------------------
 
+/**
+ * Shown when a request succeeded and there is genuinely nothing yet.
+ *
+ * The default title is "Nothing here yet" rather than a figure. A dashboard that
+ * shows a fabricated revenue number to look populated teaches a seller to trust
+ * numbers the app made up.
+ */
 export function EmptyState({
-  icon: Icon,
-  title,
+  icon: Icon = Inbox,
+  title = 'Nothing here yet',
   description,
   actionLabel,
   onActionPress,
@@ -90,42 +103,51 @@ export function EmptyState({
   style,
 }: {
   icon?: LucideIcon;
-  title: string;
+  title?: string;
   description?: string;
   actionLabel?: string;
   onActionPress?: () => void;
   secondaryLabel?: string;
   onSecondaryPress?: () => void;
-  /** Tighter layout for empty search results inside an already-populated screen. */
+  /** Tighter layout for an empty search result inside a populated screen. */
   compact?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const { spacing, colors, radius } = useTheme();
 
   return (
-    <View style={[styles.empty, compact ? { paddingVertical: spacing.xl } : { paddingVertical: spacing.xxl }, style]}>
-      {Icon ? (
-        <View
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: radius.card,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: colors.surfaceSunken,
-            marginBottom: spacing.md,
-          }}
-        >
-          <Icon size={26} color={colors.textMuted} strokeWidth={1.75} />
-        </View>
-      ) : null}
+    <View
+      style={[
+        styles.centred,
+        { paddingVertical: compact ? spacing.xl : spacing.xxl },
+        style,
+      ]}
+    >
+      <View
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: radius.mark,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.surfaceSunken,
+          marginBottom: spacing.md,
+        }}
+      >
+        <Icon size={24} color={colors.textMuted} strokeWidth={1.75} />
+      </View>
 
       <Text variant="heading" center>
         {title}
       </Text>
 
       {description ? (
-        <Text variant="body" tone="muted" center style={{ marginTop: spacing.xs, maxWidth: 320 }}>
+        <Text
+          variant="body"
+          tone="muted"
+          center
+          style={{ marginTop: spacing.xxs, maxWidth: 320 }}
+        >
           {description}
         </Text>
       ) : null}
@@ -134,7 +156,7 @@ export function EmptyState({
         <Button
           label={actionLabel}
           onPress={onActionPress}
-          style={{ marginTop: spacing.lg, minWidth: 180 }}
+          style={{ marginTop: spacing.lg, alignSelf: 'center' }}
         />
       ) : null}
 
@@ -143,7 +165,7 @@ export function EmptyState({
           label={secondaryLabel}
           variant="ghost"
           onPress={onSecondaryPress}
-          style={{ marginTop: spacing.xs }}
+          style={{ marginTop: spacing.xs, alignSelf: 'center' }}
         />
       ) : null}
     </View>
@@ -154,6 +176,13 @@ export function EmptyState({
 // Error state
 // ---------------------------------------------------------------------------
 
+/**
+ * A failure the seller can act on.
+ *
+ * `title` says what failed and `action` says what to do. Neither is optional,
+ * because an error screen that only says "Something went wrong" makes the seller
+ * guess, and a blank screen makes them reinstall the app.
+ */
 export function ErrorState({
   title,
   action,
@@ -167,30 +196,84 @@ export function ErrorState({
   retryLabel?: string;
   compact?: boolean;
 }) {
-  const { spacing, colors } = useTheme();
+  const { spacing } = useTheme();
 
   return (
     <View
       style={[
         styles.standalone,
-        { backgroundColor: colors.background },
-        compact ? { paddingVertical: spacing.lg } : { paddingVertical: spacing.xxl },
+        { paddingVertical: compact ? spacing.lg : spacing.xxl },
       ]}
     >
+      <View style={{ alignItems: 'center', maxWidth: 360 }}>
+        <Text variant="heading" center>
+          {title}
+        </Text>
+        {action ? (
+          <Text variant="body" tone="muted" center style={{ marginTop: spacing.xxs }}>
+            {action}
+          </Text>
+        ) : null}
+        {onRetry ? (
+          <Button
+            label={retryLabel}
+            variant="secondary"
+            onPress={onRetry}
+            style={{ marginTop: spacing.lg, alignSelf: 'center' }}
+          />
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * A failure worth stopping for.
+ *
+ * Separate from `ErrorState` because it carries an icon and uses the danger tint,
+ * which is reserved for exactly this: an operation that did not complete and left
+ * something inconsistent. Reach for `ErrorState` first.
+ */
+export function FatalErrorState({
+  title,
+  action,
+  onRetry,
+}: {
+  title: string;
+  action?: string;
+  onRetry?: () => void;
+}) {
+  const { spacing, colors, radius } = useTheme();
+
+  return (
+    <View style={[styles.standalone, { paddingVertical: spacing.xxl }]}>
+      <View
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: radius.mark,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.dangerSoft,
+          marginBottom: spacing.md,
+        }}
+      >
+        <TriangleAlert size={24} color={colors.danger} strokeWidth={1.75} />
+      </View>
+
       <Text variant="heading" center>
         {title}
       </Text>
       {action ? (
-        <Text variant="body" tone="muted" center style={{ marginTop: spacing.xs, maxWidth: 320 }}>
+        <Text variant="body" tone="muted" center style={{ marginTop: spacing.xxs, maxWidth: 340 }}>
           {action}
         </Text>
       ) : null}
       {onRetry ? (
         <Button
-          label={retryLabel}
-          variant="secondary"
+          label="Try again"
           onPress={onRetry}
-          style={{ marginTop: spacing.lg, minWidth: 160 }}
+          style={{ marginTop: spacing.lg, alignSelf: 'center' }}
         />
       ) : null}
     </View>
@@ -202,13 +285,7 @@ export function LoadingState({ label }: { label?: string }) {
   const { spacing, colors } = useTheme();
 
   return (
-    <View
-      style={[
-        styles.standalone,
-        styles.empty,
-        { backgroundColor: colors.background, paddingVertical: spacing.xxxl, gap: spacing.sm },
-      ]}
-    >
+    <View style={[styles.standalone, { paddingVertical: spacing.xxxl, gap: spacing.sm }]}>
       <ActivityIndicator color={colors.primary} />
       {label ? (
         <Text variant="caption" tone="muted">
@@ -222,94 +299,82 @@ export function LoadingState({ label }: { label?: string }) {
 /**
  * Shown when the app has no Supabase credentials.
  *
- * Requirement 26: the app must never substitute plausible-looking data for a
- * missing backend. It says exactly what is wrong and how to fix it, and offers
- * no way to proceed into a UI that could not persist anything.
+ * The app never substitutes plausible-looking data for a missing backend. It
+ * names the problem, gives the three steps to fix it, and offers no way into a UI
+ * that could not persist anything the seller typed.
  */
 export function SetupRequired() {
   const { spacing, colors, radius } = useTheme();
 
+  const steps = [
+    'Copy .env.example to .env',
+    'Add your Supabase URL and anon key',
+    'Run the SQL in supabase/migrations, then restart',
+  ];
+
   return (
-    <View style={[styles.setup, styles.standalone, { backgroundColor: colors.background, paddingHorizontal: spacing.lg }]}>
+    <ScrollView
+      contentContainerStyle={[styles.standalone, { paddingVertical: spacing.xxl }]}
+      showsVerticalScrollIndicator={false}
+    >
       <View
         style={{
           width: 56,
           height: 56,
-          borderRadius: radius.card,
+          borderRadius: radius.mark,
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: colors.warningSoft,
           marginBottom: spacing.md,
         }}
       >
-        <Database size={26} color={colors.warning} strokeWidth={1.75} />
+        <Database size={24} color={colors.warning} strokeWidth={1.75} />
       </View>
 
       <Text variant="heading" center>
         SellFlow is not connected
       </Text>
 
-      <Text variant="body" tone="muted" center style={{ marginTop: spacing.xs, maxWidth: 340 }}>
-        This build has no database behind it, so it cannot save orders, customers or stock. Nothing
-        you enter would be kept.
+      <Text variant="body" tone="muted" center style={{ marginTop: spacing.xxs, maxWidth: 340 }}>
+        This build has no database behind it, so it cannot save orders, customers or stock.
+        Nothing you enter would be kept.
       </Text>
 
       <View
         style={{
           marginTop: spacing.lg,
           alignSelf: 'stretch',
+          maxWidth: 400,
           backgroundColor: colors.surfaceSunken,
           borderRadius: radius.mark,
+          borderWidth: 1,
+          borderColor: colors.border,
           padding: spacing.md,
           gap: spacing.xs,
         }}
       >
         <Text variant="micro" tone="muted">
-          To fix this
+          TO FIX THIS
         </Text>
-        <Text variant="caption" tone="secondary">
-          1. Copy .env.example to .env
-        </Text>
-        <Text variant="caption" tone="secondary">
-          2. Add your Supabase URL and anon key
-        </Text>
-        <Text variant="caption" tone="secondary">
-          3. Run the SQL in supabase/migrations, then restart the app
-        </Text>
+        {steps.map((step, index) => (
+          <Text key={step} variant="caption" tone="secondary">
+            {`${index + 1}. ${step}`}
+          </Text>
+        ))}
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  rowSkeleton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rowSkeletonBody: {
-    flex: 1,
-    gap: 6,
-  },
-  empty: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  /**
-   * A state that owns the whole screen: an error, a blocking spinner, a missing
-   * configuration. These are rendered directly by a route layout rather than
-   * inside a `Screen`, so they must paint their own background. Without it they
-   * inherit whatever is behind them and their themed text lands on the wrong
-   * surface.
-   */
   standalone: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
-  setup: {
-    flex: 1,
-    justifyContent: 'center',
+  centred: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
   },
 });
