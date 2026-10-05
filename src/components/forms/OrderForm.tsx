@@ -31,6 +31,7 @@ import {
   Card,
   ErrorState,
   LoadingState,
+  Input,
   MoneyInput,
   NumberInput,
   Screen,
@@ -55,6 +56,7 @@ import { useProductPicker } from '@/features/products/queries';
 import type { PaymentMethod } from '@/lib/database.types';
 import { AppError } from '@/lib/errors';
 import { formatMoney, money, toMajor, zero } from '@/lib/money';
+import { createClientRef } from '@/lib/connectivity';
 import { canWrite, useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -88,16 +90,31 @@ export function OrderForm() {
   const [amountPaid, setAmountPaid] = useState<number | null>(null);
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [banner, setBanner] = useState<string | null>(null);
-  const [pasted, setPasted] = useState('');
+const [pasted, setPasted] = useState('');
   const [showPaste, setShowPaste] = useState(false);
   const [pasteWarnings, setPasteWarnings] = useState<string[]>([]);
+
+  /*
+   * COD is the most common way an order is paid for in this market, and until now the
+   * app had no way to say so: `create_order` has accepted `p_is_cod` since migration
+   * 0008 and the client never sent it. Every order was recorded as prepaid, and the
+   * collection the seller was waiting on did not exist anywhere in the data.
+   *
+   * Turning COD on also asks where the parcel goes, because an order a rider cannot be
+   * dispatched to is not a finished order.
+   */
+  const [isCod, setIsCod] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryThana, setDeliveryThana] = useState('');
+  const [deliveryDistrict, setDeliveryDistrict] = useState('');
+  const [deliveryPhone, setDeliveryPhone] = useState('');
 
   /*
    * One id per draft, minted when the screen mounts and NOT regenerated per attempt.
    * This is what makes a double-tap safe: `create_order` is idempotent on client_ref,
    * so the second submission returns the first order instead of creating a twin.
    */
-  const [clientRef] = useState(() => newClientRef());
+  const [clientRef] = useState(createClientRef);
 
   const totals = useMemo(
     () => calculateTotals(lines, discount ?? zero(), deliveryCharge ?? zero()),
@@ -253,8 +270,13 @@ export function OrderForm() {
         deliveryCharge: toMajor(deliveryCharge ?? zero()),
         amountPaid: toMajor(amountPaid ?? zero()),
         paymentMethod: method,
-        notes: notes.trim() || null,
+notes: notes.trim() || null,
         clientRef,
+        isCod,
+        deliveryAddress: isCod ? deliveryAddress.trim() || null : null,
+        deliveryThana: isCod ? deliveryThana.trim() || null : null,
+        deliveryDistrict: isCod ? deliveryDistrict.trim() || null : null,
+        deliveryPhone: isCod ? deliveryPhone.trim() || null : null,
       });
 
       router.replace(`/order/${orderId}`);
@@ -580,31 +602,104 @@ export function OrderForm() {
           </Card>
         </View>
 
-        <View style={{ gap: spacing.sm }}>
+<View style={{ gap: spacing.sm }}>
           <SectionHeader title="Payment" />
 
           <Card>
             <View style={{ gap: spacing.md }}>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
-                {METHODS.map((option) => (
+              {/*
+               * COD is asked first and by name, because it changes what the rest of
+               * this section means rather than being another method in a list. When it
+               * is on, nothing is collected now and the address matters.
+               */}
+              <Pressable
+                onPress={() => setIsCod((current) => !current)}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: isCod }}
+                testID="order-cod-toggle"
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: spacing.xs,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text variant="bodyStrong">Cash on delivery</Text>
+                    <Text variant="caption" tone="muted">
+                      The courier collects the money when the parcel arrives.
+                    </Text>
+                  </View>
                   <Badge
-                    key={option.value}
-                    label={option.label}
-                    tone={method === option.value ? 'primary' : 'neutral'}
-                    onPress={() => setMethod(option.value)}
-                    testID={`order-method-${option.value}`}
+                    label={isCod ? 'On' : 'Off'}
+                    tone={isCod ? 'primary' : 'neutral'}
                   />
-                ))}
-              </View>
+                </View>
+              </Pressable>
+
+              {isCod ? (
+                <View style={{ gap: spacing.md }}>
+                  <Input
+                    label="Delivery address"
+                    value={deliveryAddress}
+                    onChangeText={setDeliveryAddress}
+                    placeholder="House, road, area"
+                    testID="order-delivery-address"
+                  />
+                  <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <Input
+                        label="Thana"
+                        value={deliveryThana}
+                        onChangeText={setDeliveryThana}
+                        testID="order-delivery-thana"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Input
+                        label="District"
+                        value={deliveryDistrict}
+                        onChangeText={setDeliveryDistrict}
+                        testID="order-delivery-district"
+                      />
+                    </View>
+                  </View>
+                  <Input
+                    label="Delivery phone"
+                    value={deliveryPhone}
+                    onChangeText={setDeliveryPhone}
+                    hint="The number the rider will call. Optional."
+                    keyboardType="phone-pad"
+                    placeholder="01XXXXXXXXX"
+                    testID="order-delivery-phone"
+                  />
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+                  {METHODS.map((option) => (
+                    <Badge
+                      key={option.value}
+                      label={option.label}
+                      tone={method === option.value ? 'primary' : 'neutral'}
+                      onPress={() => setMethod(option.value)}
+                      testID={`order-method-${option.value}`}
+                    />
+                  ))}
+                </View>
+              )}
 
               <MoneyInput
                 label="Amount paid now"
                 value={amountPaid}
                 onChange={setAmountPaid}
                 hint={
-                  due === 0 && totals.total > 0
-                    ? 'Fully paid.'
-                    : 'Leave empty if nothing was paid yet. The rest is recorded as due.'
+                  isCod
+                    ? 'Leave empty for a normal cash-on-delivery order. Any advance is recorded here.'
+                    : due === 0 && totals.total > 0
+                      ? 'Fully paid.'
+                      : 'Leave empty if nothing was paid yet. The rest is recorded as due.'
                 }
                 testID="order-amount-paid"
               />
@@ -731,12 +826,6 @@ function CustomerPicker({
       )}
     </View>
   );
-}
-
-/** Stable per-draft id. Reused across retries, which is what makes saving idempotent. */
-function newClientRef(): string {
-  const random = Math.random().toString(36).slice(2, 10);
-  return `ord_${Date.now().toString(36)}_${random}`;
 }
 
 let lineCounter = 0;

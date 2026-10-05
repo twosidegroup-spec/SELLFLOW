@@ -38,8 +38,18 @@ export interface CreateOrderInput {
   amountPaid: number;
   paymentMethod: PaymentMethod;
   notes: string | null;
-  /** Reused across retries so a duplicate order is impossible. */
+  /** Reused across retries so a duplicate order is impossible. A v4 uuid. */
   clientRef: string;
+  /**
+   * Cash on delivery. The server derives `cod_amount` as total - paid, and only treats
+   * this as COD when something is genuinely still to collect.
+   */
+  isCod: boolean;
+  /** Snapshot of where the parcel goes. Null for a pickup. */
+  deliveryAddress: string | null;
+  deliveryThana: string | null;
+  deliveryDistrict: string | null;
+  deliveryPhone: string | null;
 }
 
 /**
@@ -87,6 +97,25 @@ export function useCreateOrder() {
         p_payment_method: input.paymentMethod,
         p_notes: input.notes,
         p_client_ref: input.clientRef,
+        /*
+         * `create_order` has accepted these since 0008 and the client simply never
+         * sent them, which made two things impossible to record at all.
+         *
+         * COD: `is_cod` is the flag, and the server derives `cod_amount` as
+         * total - paid from it. Without sending it, every order was recorded as
+         * prepaid or due-on-account, and the courier collection the seller is waiting
+         * on did not exist anywhere in the data.
+         *
+         * Delivery address: a courier order with no address cannot be dispatched. The
+         * columns exist and are stored on the order, so they are a snapshot of where
+         * the parcel went -- not a live link to the customer, which may be edited
+         * later.
+         */
+        p_is_cod: input.isCod,
+        p_delivery_address: input.deliveryAddress,
+        p_delivery_thana: input.deliveryThana,
+        p_delivery_district: input.deliveryDistrict,
+        p_delivery_phone: input.deliveryPhone,
       });
 
       if (error) {
