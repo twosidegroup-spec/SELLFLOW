@@ -24,13 +24,42 @@ export const writes = [];
 export function __resetSecureStore() {
   store.clear();
   writes.length = 0;
+  failures.read = null;
+  failures.write = null;
+}
+
+/**
+ * Keys that exist, for tests that need to inspect the whole record rather than
+ * guess a suffix. Used by the passcode lockout suite to assert that no stored
+ * value contains the raw passcode.
+ */
+export function __secureStoreKeys() {
+  return [...store.keys()];
 }
 
 export function __dumpSecureStore() {
   return Object.fromEntries(store);
 }
 
+/**
+ * Set to make the next read or write throw, the way a real keystore does after a
+ * biometric re-enrolment. Cleared by `__resetSecureStore`.
+ *
+ * A control channel rather than monkey-patching the export: an ES module
+ * namespace object is frozen, so assigning to `getItemAsync` throws.
+ */
+export const failures = { read: null, write: null };
+
+export function __failNext(kind, error) {
+  failures[kind] = error ?? new Error(`${kind} failed`);
+}
+
 export async function getItemAsync(key) {
+  if (failures.read) {
+    const error = failures.read;
+    failures.read = null;
+    throw error;
+  }
   return store.has(key) ? store.get(key) : null;
 }
 

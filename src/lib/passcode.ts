@@ -31,6 +31,17 @@ const DIGEST = Crypto.CryptoDigestAlgorithm.SHA512;
 const MAX_ATTEMPTS = 5;
 
 /**
+ * How long the entry stays refused after MAX_ATTEMPTS wrong guesses.
+ *
+ * Thirty seconds, not minutes. The threat is someone picking up an unlocked
+ * phone and guessing; a short cooldown stops a five-digit brute force just as
+ * effectively as a long one, because the attacker has to wait for it either way.
+ * A long cooldown would punish the far more likely case -- a seller who
+ * mis-remembered their own passcode -- and they hold live orders.
+ */
+const LOCKOUT_MS = 30_000;
+
+/**
  * The two lengths a seller can choose.
  *
  * A passcode length has to be *known*, not guessed. The unlock screen used to
@@ -201,6 +212,9 @@ export async function clearPasscode(userId: string): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(secureKey(userId));
     await SecureStore.deleteItemAsync(`${secureKey(userId)}.failed`);
+    // The cooldown marker goes too. Leaving it behind would mean the NEXT
+    // passcode is born already locked out until a stale timestamp expires.
+    await SecureStore.deleteItemAsync(`${secureKey(userId)}.lockedUntil`);
   } catch {
     // Nothing to clear.
   }
@@ -229,9 +243,26 @@ async function writeAttempts(userId: string, n: number): Promise<void> {
 /**
  * Verifies a passcode.
  *
- * Failures are counted and the passcode is wiped at MAX_ATTEMPTS. Wiping is the
- * safe default: a passcode someone cannot remember must not be a permanent
- * lockout, and the account password still gets them back in to set a new one.
+ * Failures are counted. After MAX_ATTEMPTS the entry is LOCKED FOR A COOLDOWN --
+ * it is not wiped.
+ *
+ * WHY NOT WIPED
+ *
+ * The previous behaviour deleted the passcode record on the fifth wrong guess.
+ * That is a lockout that grants access: the person holding the phone simply
+ * continues into the app, and the only thing lost is the seller's own protection.
+ * A rate limiter whose fifth action is "let them in" is worse than no rate limiter,
+ * because it looks like protection.
+ *
+ * WHY A COOLDOWN AND NOT A PERMANENT LOCK
+ *
+ * A seller who forgets their own passcode must not be locked out of their
+ * business permanently -- they hold live orders. So the entry refuses for
+ * LOCKOUT_MS and then reopens. Escape remains the account password, which is the
+ * real credential; the passcode is a local guard against handing someone an
+ * unlocked phone.
+ *
+ * The counter itself is stored beside the record and cleared on any success.
  */
 export async function verifyPasscode(
   userId: string,
@@ -250,13 +281,23 @@ export async function verifyPasscode(
 
   const attempts = await readAttempts(userId);
   if (attempts >= MAX_ATTEMPTS) {
-    return {
-      pass: 0,
-      ok: false,
-      lockedOut: true,
-      remaining: 0,
-      message: 'Too many attempts. The passcode was removed — sign in again to set a new one.',
-    };
+    const waitMs = await lockoutRemainingMs(userId);
+    if (waitMs > 0) {
+      return {
+        pass: MAX_ATTEMPTS,
+        ok: false,
+        lockedOut: true,
+        remaining: 0,
+        // The password is named on every locked-out response, not just the first.
+        // A seller mid-cooldown who has forgotten their passcode is the exact
+        // person who needs to see the way out, and they see this message, not the
+        // one that introduced the lockout.
+        message: `Too many attempts. Try again in ${Math.ceil(waitMs / 1000)}s, or sign in with your account password.`,
+      };
+    }
+    // The cooldown has expired. Reset the counter and let this attempt be judged on
+    // its own merits, rather than stranding the seller at a permanent refusal.
+    await writeAttempts(userId, 0);
   }
 
   let record: PasscodeRecord;
@@ -271,6 +312,7 @@ export async function verifyPasscode(
   const candidate = await derive(passcode, record.salt);
   if (timingSafeEqual(candidate, record.hash)) {
     await writeAttempts(userId, 0);
+    await safeWrite(`${secureKey(userId)}.lockedUntil`, '');
     return { pass: 0, ok: true, lockedOut: false, remaining: MAX_ATTEMPTS, message: '' };
   }
 
@@ -278,13 +320,14 @@ export async function verifyPasscode(
   await writeAttempts(userId, next);
 
   if (next >= MAX_ATTEMPTS) {
-    await clearPasscode(userId);
+    // Start the cooldown. The record is left intact on purpose.
+    await writeLockedUntil(userId, Date.now() + LOCKOUT_MS);
     return {
-      pass: 0,
+      pass: next,
       ok: false,
       lockedOut: true,
       remaining: 0,
-      message: 'Too many attempts. The passcode was removed — sign in again to set a new one.',
+      message: `Too many attempts. Try again in ${Math.ceil(LOCKOUT_MS / 1000)}s, or sign in with your account password.`,
     };
   }
 
@@ -298,4 +341,45 @@ export async function verifyPasscode(
   };
 }
 
+/** Milliseconds until the entry reopens. 0 when it is not locked. */
+async function lockoutRemainingMs(userId: string): Promise<number> {
+  const raw = await safeRead(`${secureKey(userId)}.lockedUntil`);
+  const until = Number(raw);
+  if (!Number.isFinite(until) || until <= 0) return 0;
+  const remaining = until - Date.now();
+  if (remaining > 0) return remaining;
+  await safeWrite(`${secureKey(userId)}.lockedUntil`, '');
+  return 0;
+}
+
+async function writeLockedUntil(userId: string, at: number): Promise<void> {
+  await safeWrite(`${secureKey(userId)}.lockedUntil`, String(at));
+}
+
+/**
+ * SecureStore read that never throws.
+ *
+ * The keystore fails in ways nothing in this file controls. A read failure here
+ * must not turn into an unhandled rejection on the unlock path, which would leave
+ * the seller on a permanently blank keypad.
+ */
+async function safeRead(key: string): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(key);
+  } catch {
+    return null;
+  }
+}
+
+async function safeWrite(key: string, value: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(key, value, {
+      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    });
+  } catch {
+    // Losing the throttle degrades to "no lockout", never to a broken keypad.
+  }
+}
+
 export const PASSCODE_ATTEMPTS = MAX_ATTEMPTS;
+export const PASSCODE_LOCKOUT_MS = LOCKOUT_MS;
