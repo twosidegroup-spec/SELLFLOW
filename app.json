@@ -65,7 +65,8 @@
         }
       ],
       "expo-image",
-      "./plugins/withSellflowSms"
+      "./plugins/withSellflowSms",
+      "./plugins/withAndroidDesugaring"
     ],
     "experiments": {
       "typedRoutes": true
