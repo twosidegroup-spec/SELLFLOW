@@ -149,10 +149,25 @@ export const useLock = create<LockState>((set, get) => ({
       set({ isLocked: false });
       return { ok: true, message: '', lockedOut: false };
     }
-    // A lockout wipes the record server-side of the keystore, so reflect that.
+
+    /*
+     * A lockout stays locked.
+     *
+     * This used to clear `hasPasscode` and `isLocked` when `result.lockedOut` was
+     * true, on the theory that the record had been wiped so the flags should follow.
+     * That was the same bug one layer up: the limiter deleted the record on the
+     * fifth guess, so the sixth call reported success and the store then unlocked
+     * the app. `verifyPasscode` no longer deletes anything, so clearing the flag
+     * here would hand out access that the keystore is still actively refusing --
+     * the lockout screen would show and the rest of the app would be reachable.
+     *
+     * Staying locked is also the correct behaviour independent of the history: a
+     * refused passcode must not become a granted one on a later render.
+     */
     if (result.lockedOut) {
-      set({ hasPasscode: false, isLocked: false, length: null });
+      // `isLocked` stays true on purpose. Nothing else changes.
     }
+
     return { ok: false, message: result.message, lockedOut: result.lockedOut };
   },
 
