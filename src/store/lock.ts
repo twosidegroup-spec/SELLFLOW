@@ -75,9 +75,51 @@ export const useLock = create<LockState>((set, get) => ({
       set({ hasPasscode: false, isLocked: false, isReady: true, isOffered: false, length: null });
       return;
     }
-    // Both reads hit the same keystore entry, so they are issued together rather
-    // than as two sequential round trips on every cold start.
-    const [present, length] = await Promise.all([hasPasscode(userId), readPasscodeLength(userId)]);
+
+    /*
+     * Read the stored state, but never let a read failure block the app.
+     *
+     * Both reads go through expo-secure-store, which is backed by the Android
+     * Keystore -- and the Keystore fails in ways nothing in our control predicts:
+     * `KeyPermanentlyInvalidatedException` after the seller changes their lock
+     * screen or re-enrols a biometric, `UserNotAuthenticatedException` when the
+     * device has been locked, and outright corruption on some OEM ROMs.
+     *
+     * Unhandled, that rejection is fatal in the worst possible way. `isReady`
+     * never becomes true, `(app)/_layout` sits on `if (!isLockReady) return
+     * <LoadingState />` forever, and the caller is `void hydrateLock(userId)` --
+     * a floating promise, so nothing is reported anywhere. The result is an app
+     * that opens to a permanently blank screen with no crash, no error and no way
+     * out. That is exactly what a broken Keystore looks like to a seller, and it
+     * is not recoverable without reinstalling.
+     *
+     * So a failed read resolves as "no passcode stored" and the seller gets in.
+     * That is a deliberate trade: the passcode is a local guard against handing
+     * your unlocked phone to someone, while the Supabase session is the actual
+     * account credential. Refusing to open the app protects nothing that the
+     * sign-in does not already protect, and bricking the app protects the seller
+     * from nothing at all.
+     *
+     * It also does not create a passcode, does not clear one, and does not mark
+     * setup as offered -- only this one read is abandoned.
+     */
+    let present = false;
+    let length: number | null = null;
+
+    try {
+      [present, length] = await Promise.all([hasPasscode(userId), readPasscodeLength(userId)]);
+    } catch (error) {
+      // The error name only. A Keystore failure message can carry the alias and
+      // key material, and none of it belongs in a log or on a screen.
+      if (__DEV__) {
+        console.warn(
+          `[lock] passcode read failed for ${userId}: ${
+            error instanceof Error ? error.name : 'unknown'
+          }. Continuing without the local passcode lock.`,
+        );
+      }
+    }
+
     set({
       hasPasscode: present,
       // A stored passcode means the next entry has to clear it.
