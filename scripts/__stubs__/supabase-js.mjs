@@ -31,6 +31,22 @@ export const __setDefaultRpc = (behaviour) => {
   defaultBehaviour = behaviour;
 };
 
+/**
+ * The options object the real `@/lib/supabase` passed to `createClient`.
+ *
+ * The session-persistence test asserts on this rather than on behaviour alone:
+ * whether auth-js actually USES the storage adapter is decided inside the real
+ * package, so the test has to inspect the value handed over rather than trust a
+ * round trip through a stub.
+ */
+let clientOptions = null;
+
+export const __resetClientOptions = () => {
+  clientOptions = null;
+};
+
+export const __lastClientOptions = () => clientOptions;
+
 /** Names of the RPCs in the order the app called them. */
 export const __rpcNames = () => calls.map((call) => call.name);
 
@@ -56,5 +72,10 @@ const buildClient = () => ({
   }),
 });
 
-export const createClient = buildClient;
-export default { createClient: buildClient };
+const createClientWithCapture = (url, key, options) => {
+  clientOptions = options ?? null;
+  return buildClient();
+};
+
+export const createClient = createClientWithCapture;
+export default { createClient: createClientWithCapture };

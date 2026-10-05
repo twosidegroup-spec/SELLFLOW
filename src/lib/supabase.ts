@@ -11,6 +11,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from './database.types';
+import { sessionStorage } from './sessionStorage';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -52,9 +53,21 @@ export function getSupabase(): SupabaseClient<Database> {
 
     client = createClient<Database>(url as string, anonKey as string, {
       auth: {
-        // Keep the session in memory plus Supabase's own AsyncStorage-backed
-        // storage. This is what makes the app survive a restart with the user
-        // still signed in.
+        /*
+         * The `storage` option is REQUIRED on a device, not an optimisation.
+         *
+         * Without it auth-js falls back to `globalThis.localStorage` only when
+         * `isBrowser()` is true -- which needs `document`, which React Native
+         * never defines -- and otherwise uses an in-memory adapter. So
+         * `persistSession: true` alone is a no-op on Android and iOS: the app
+         * launches, the seller is asked to sign in again, and the passcode
+         * unlock never gets a chance because there is no session to unlock.
+         *
+         * AsyncStorage is what Supabase recommends for React Native. See
+         * src/lib/sessionStorage.ts for the full reasoning and the keystore
+         * tradeoff.
+         */
+        storage: sessionStorage,
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: false,
