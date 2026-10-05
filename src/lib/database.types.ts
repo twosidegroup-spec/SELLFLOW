@@ -982,6 +982,7 @@ courier_locations: {
         Returns: number;
       };
       get_dashboard: { Args: { p_store_id: string; p_today: string }; Returns: Json };
+  get_profit_completeness: { Args: { p_store_id: string; p_today: string }; Returns: Json };
       get_customer_stats: { Args: { p_customer_id: string }; Returns: Json };
       get_sales_report: { Args: { p_store_id: string; p_from: string; p_to: string }; Returns: Json };
       get_top_products: {

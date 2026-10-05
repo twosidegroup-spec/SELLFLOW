@@ -17,7 +17,12 @@ import { useRouter } from 'expo-router';
 import { ArrowRight, Package, Receipt, TriangleAlert } from 'lucide-react-native';
 
 import { Button, Card, EmptyState, ErrorState, Screen, Skeleton, Text } from '@/components/ui';
-import { useDashboard, type DashboardData } from '@/features/dashboard/queries';
+import {
+  useDashboard,
+  useProfitCompleteness,
+  type DashboardData,
+  type ProfitCompleteness,
+} from '@/features/dashboard/queries';
 import { formatMoney } from '@/lib/money';
 import { canWrite, useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -44,6 +49,8 @@ export default function DashboardScreen() {
   // makes tenant isolation structural rather than a thing to remember: there is no
   // code path by which a seller can name another seller's store.
   const { data, isPending, error, refetch } = useDashboard(store?.id);
+  // A second, small query. It must not be able to take the dashboard down with it.
+  const completeness = useProfitCompleteness(store?.id);
 
   if (error) {
     return (
@@ -77,27 +84,67 @@ export default function DashboardScreen() {
           />
         ) : null}
 
-        {isPending || !data ? <DashboardSkeleton /> : <DashboardBody data={data} />}
+        {isPending || !data ? (
+    <DashboardSkeleton />
+  ) : (
+    <DashboardBody data={data} completeness={completeness.data ?? UNKNOWN_COMPLETENESS} />
+  )}
       </View>
     </Screen>
   );
 }
 
 /**
+ * Used while the completeness query is still loading, or when it fails.
+ *
+ * `undefined` on every window makes the caller fall back to the older cost-sum
+ * heuristic, which is what this screen did before the flag existed. Choosing a
+ * definite `false` here would claim every cost is known, which is the one answer
+ * that must never be assumed.
+ */
+const UNKNOWN_COMPLETENESS: ProfitCompleteness = {
+  today: undefined,
+  week: undefined,
+  month: undefined,
+  costs: undefined,
+};
+
+/**
  * The real figures.
  *
- * `get_dashboard` returns profit as a number because it is derived from costs that
- * were entered; when a seller has never recorded a cost, it is zero and saying zero
- * would be a lie about their business. So the honest reading is shown next to it.
+ * WHY PROFIT IS NOT ALWAYS SHOWN AS A NUMBER
+ *
+ * `get_dashboard` computes profit as `line_total - coalesce(unit_cost, 0) * quantity`.
+ * When a product had no cost price recorded, `unit_cost` is NULL and the cost is
+ * counted as zero, so the figure is too high -- and nothing in that payload says so.
+ *
+ * `useProfitCompleteness` asks the separate question properly. This screen previously
+ * inferred it from `costs.product + costs.courier + costs.other > 0`, which was wrong
+ * in both directions: those cover a 30-day window while the profit shown is today's,
+ * and they measure whether ANY cost was entered rather than whether the cost of every
+ * line sold is known.
+ *
+ * Until migration 0025 is applied, completeness is undefined and the old heuristic is
+ * used as a fallback, so the screen is never worse than before the fix.
  */
-function DashboardBody({ data }: { data: DashboardData }) {
+function DashboardBody({
+  data,
+  completeness,
+}: {
+  data: DashboardData;
+  completeness: ProfitCompleteness;
+}) {
   const { colors, spacing } = useTheme();
   const router = useRouter();
 
   const action = data.action;
   const hasActions =
     action.to_confirm + action.to_pack + action.to_ship + action.out_for_delivery + action.failed > 0;
-  const hasCosts = data.costs.product + data.costs.courier + data.costs.other > 0;
+
+  const fallbackHasCosts = data.costs.product + data.costs.courier + data.costs.other > 0;
+  // Only today's profit is on this screen, so only today's flag is needed. `undefined`
+  // means migration 0025 has not been applied yet, and the old heuristic stands in.
+  const todayPartial = completeness.today ?? !fallbackHasCosts;
 
   return (
     <View style={{ gap: spacing.md }}>
@@ -113,11 +160,18 @@ function DashboardBody({ data }: { data: DashboardData }) {
         </View>
       </Card>
 
-      <View style={{ gap: spacing.sm, flexDirection: 'row', flexWrap: 'wrap' }}>
+<View style={{ gap: spacing.sm, flexDirection: 'row', flexWrap: 'wrap' }}>
         <Metric
           label="Profit today"
-          value={hasCosts ? formatMoney(data.today.profit) : 'Not recorded'}
-          tone={!hasCosts ? 'muted' : data.today.profit > 0 ? 'success' : data.today.profit < 0 ? 'danger' : 'default'}
+          /*
+           * Partial means the number shown is a FLOOR, not a result: at least one
+           * product sold today had no cost price, so the real margin is lower. It is
+           * shown as a number with the caveat attached, because "Not recorded" on a day
+           * that genuinely recorded costs would be the other kind of wrong.
+           */
+          value={formatMoney(data.today.profit)}
+          hint={todayPartial ? 'at least — some costs unrecorded' : undefined}
+          tone={todayPartial ? 'muted' : data.today.profit > 0 ? 'success' : data.today.profit < 0 ? 'danger' : 'default'}
           width="48%"
         />
         <Metric

@@ -113,6 +113,51 @@ function record(value: unknown): Record<string, number> {
   return out;
 }
 
+/**
+ * Whether each window's profit figure rests on complete cost data.
+ *
+ * `get_dashboard` sums `line_total - coalesce(unit_cost, 0) * quantity`, so a line
+ * whose product had no cost price contributes a profit that is too high, and the
+ * payload itself cannot tell you that. `get_profit_completeness` answers the separate
+ * question the arithmetic cannot.
+ *
+ * Tri-state on purpose. `undefined` means the migration has not been applied yet, and
+ * the caller must fall back to the older heuristic. `true` means the number on screen
+ * is a floor. `false` means it is real.
+ */
+export interface ProfitCompleteness {
+  today: boolean | undefined;
+  week: boolean | undefined;
+  month: boolean | undefined;
+  costs: boolean | undefined;
+}
+
+export function useProfitCompleteness(storeId: string | undefined) {
+  return useQuery({
+    queryKey: [...keys.dashboard(storeId ?? ''), 'profit-completeness'],
+    enabled: Boolean(storeId),
+    // A missing function is an expected state before the migration lands, not a crash.
+    retry: false,
+    queryFn: async (): Promise<ProfitCompleteness> => {
+      const { data, error } = await getSupabase().rpc('get_profit_completeness', {
+        p_store_id: storeId as string,
+        p_today: toDateString(),
+      });
+
+      if (error) return { today: undefined, week: undefined, month: undefined, costs: undefined };
+
+      const raw = (data ?? {}) as Record<string, unknown>;
+      const flag = (key: string): boolean | undefined => {
+        const source = raw[key] as Record<string, unknown> | undefined;
+        if (!source || typeof source !== 'object') return undefined;
+        return typeof source.profit_is_partial === 'boolean' ? source.profit_is_partial : undefined;
+      };
+
+      return { today: flag('today'), week: flag('week'), month: flag('month'), costs: flag('costs') };
+    },
+  });
+}
+
 export function useDashboard(storeId: string | undefined) {
   return useQuery({
     queryKey: keys.dashboard(storeId ?? ''),

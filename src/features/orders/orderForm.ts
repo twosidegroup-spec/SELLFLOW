@@ -27,6 +27,8 @@
  */
 
 /** A catalogue product the parser may match against. */
+import { normaliseDigits } from '@/lib/money';
+
 export interface MatchableProduct {
   id: string;
   name: string;
@@ -156,16 +158,15 @@ const LABELS: { field: ParsedField; aliases: string[] }[] = [
 /** Bangladeshi mobile numbers, tolerant of spaces, dashes and +88. */
 const PHONE_PATTERN = /(?:\+?88[\s-]?)?(0?1[3-9]\d[\s-]?\d{3}[\s-]?\d{4})/g;
 
-/** Numbers a customer might write a quantity as, including Bangla digits. */
-const DIGIT_MAP: Record<string, string> = {
-  '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
-  '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9',
-};
-
-/** 1kg === 1 kg, ৳1500 === Tk1500. Keeps scraped text readable in the summary. */
+/**
+ * 1kg === 1 kg, ৳1500 === Tk1500. Keeps scraped text readable in the summary.
+ *
+ * Bangla digits are normalised by the shared helper in src/lib/money.ts rather than a
+ * second local map, so a digit that parses here also parses in a quantity field.
+ */
 function tidy(value: string): string {
   return value
-    .replace(/[০-৯]/g, (d) => DIGIT_MAP[d] ?? d)
+    .replace(/[০-৯]/g, (d) => normaliseDigits(d))
     .replace(/[ \t]+/g, ' ')
     .trim();
 }

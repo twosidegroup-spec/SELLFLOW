@@ -77,11 +77,33 @@ export function toMinor(value: string | number | null | undefined, currency: Cur
 }
 
 /**
+ * Bangla digits, and the fact that JavaScript's `\d` does not include them.
+ *
+ * `\d` is ASCII-only, so a regex that "keeps the digits" silently deletes every
+ * Bangla digit and leaves an empty string. That is how a quantity of ৫ became 0, and
+ * 0 is a real stock level -- so the field accepted it and moved on.
+ *
+ * `orderForm.ts` had its own copy of this map for the same reason. There is one now.
+ */
+const BANGLA_DIGITS: Record<string, string> = {
+  '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+  '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9',
+};
+
+/** Rewrites Bangla digits as ASCII, leaving everything else untouched. */
+export function normaliseDigits(value: string): string {
+  return value.replace(/[০-৯]/g, (digit) => BANGLA_DIGITS[digit] ?? digit);
+}
+
+/**
  * Parses a whole number of units, e.g. a stock count or a quantity.
  *
  * Distinct from `toMinor`, which is for MONEY and multiplies by the currency's
  * decimals. Using the money parser for a count is how a low-stock threshold of
  * 5 silently became 500.
+ *
+ * Bangla digits are accepted, because sellers type them and a quantity field that
+ * reads ৫ as 0 is worse than one that refuses it.
  *
  * Returns 0 for empty, non-numeric, negative or non-finite input, so a stray
  * "Infinity" can never reach a database integer column.
@@ -90,7 +112,9 @@ export function parseWholeNumber(value: string | number | null | undefined): num
   if (value === null || value === undefined || value === '') return 0;
 
   const parsed =
-    typeof value === 'number' ? value : Number.parseInt(value.replace(/[^\d-]/g, ''), 10);
+    typeof value === 'number'
+      ? value
+      : Number.parseInt(normaliseDigits(value).replace(/[^\d-]/g, ''), 10);
 
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(0, Math.round(parsed));
