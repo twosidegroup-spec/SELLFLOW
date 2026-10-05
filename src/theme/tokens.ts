@@ -527,9 +527,24 @@ export const chipHeight = 36;
  * on dark mode the border does the separating while the shadow stays subtle
  * enough not to turn grey surfaces muddy.
  */
+/**
+ * One shape for every level, so `Card` can spread a level straight into a style
+ * without casting. An inferred union of four different object literals means the
+ * consumer has to narrow before it can read `shadowOffset`, which pushes a cast
+ * into every card -- and a cast here would silently accept a missing offset.
+ */
+export interface ElevationLevel {
+  borderWidth: number;
+  shadowColor: string;
+  shadowOpacity: number;
+  shadowRadius: number;
+  shadowOffset: { width: number; height: number };
+  elevation: number;
+}
+
 export const elevation = {
-  none: { borderWidth: 0 },
-  flat: { borderWidth: 1, shadowOpacity: 0, shadowRadius: 0, elevation: 0 },
+  none: { borderWidth: 0, shadowColor: '#0D1117', shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 },
+  flat: { borderWidth: 1, shadowColor: '#0D1117', shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 },
   raised: {
     borderWidth: 1,
     shadowColor: '#0D1117',
@@ -546,7 +561,7 @@ export const elevation = {
     shadowOffset: { width: 0, height: 12 },
     elevation: 12,
   },
-} as const;
+} satisfies Record<string, ElevationLevel>;
 
 export const borderWidth = {
   hairline: 1,
