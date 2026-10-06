@@ -115,25 +115,22 @@ function code(f) {
 /**
  * Runs a test only once the V2 screen it guards exists.
  *
- * SEVEN of the tests in this file assert on payment SCREEN sources rather than on
- * the payment engine. Those screens were deleted with the rest of the V1
- * implementation, and are rebuilt in Phase 7.
+ * SIX of the tests in this file assert on payment SCREEN sources rather than on the
+ * payment engine. Those screens were deleted with the rest of the V1 implementation and
+ * were rebuilt in Phase 7.
  *
- * They are gated rather than deleted, and deliberately NOT replaced with a weaker
- * version. Each encodes a real product requirement -- that the review queue can
- * explain a refusal, that the intent form takes its amount from the real order --
- * and rewriting them now would mean inventing screens that do not exist yet. When
- * Phase 7 lands the file the gate opens and the original assertions run again
- * unchanged.
+ * They were gated rather than deleted, and deliberately NOT replaced with a weaker
+ * version, because each encodes a real product requirement: that the review queue can
+ * explain a refusal, that the intent form takes its amount from the real order rather
+ * than from a hardcoded figure.
  *
- * A gate that fails loudly when the screen is MISSING would block the rebuild, so
- * the skip is explicit in the output instead: a reader of the test log sees
- * "pending V2 screen", not a silent pass.
+ * PHASE 7: the gate is now GONE and the original assertions run unchanged. `fn` is the
+ * original body, not a substitute for it. `existsSync` stays inside the assertion so a
+ * deleted file still fails loudly -- the exact failure this gate was hiding.
  */
 function pendingScreen(path, fn) {
-  const label = `${path} must exist`;
-  test(label, { skip: `pending Phase 7: ${path} not built yet` }, () => {
-    assert.ok(existsSync(join(SRC, path)), label);
+  test(`${path} is built and holds its boundary`, () => {
+    assert.ok(existsSync(join(SRC, path)), `${path} must exist`);
     fn();
   });
 }

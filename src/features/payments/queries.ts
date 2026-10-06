@@ -30,11 +30,22 @@ import type {
   PaymentAccountRow,
   PaymentAuditLogRow,
   PaymentEventRow,
-  PaymentEventStatus,
   PaymentIntentRow,
   PaymentMatchRow,
   PaymentProvider,
 } from '@/lib/database.types';
+
+/*
+ * Re-exported so existing call sites keep importing labels from one module, while the
+ * data itself lives somewhere testable.
+ */
+export {
+  PROVIDERS,
+  auditCopy,
+  eventStatusLabel,
+  providerLabel,
+  reasonCopy,
+} from './presentation';
 
 /**
  * Provider registry.
@@ -43,76 +54,19 @@ import type {
  * spelled the same way on every surface. The `numberHint` is what the account
  * form asks for, which is a plain mobile number for all four today.
  */
-export const PROVIDERS: {
-  value: PaymentProvider;
-  label: string;
-  short: string;
-  icon: LucideIcon;
-  numberHint: string;
-}[] = [
-  {
-    value: 'bkash',
-    label: 'bKash',
-    short: 'bKash',
-    icon: Smartphone,
-    numberHint: 'The bKash number customers send to',
-  },
-  {
-    value: 'nagad',
-    label: 'Nagad',
-    short: 'Nagad',
-    icon: Wallet,
-    numberHint: 'The Nagad number customers send to',
-  },
-  {
-    value: 'rocket',
-    label: 'Rocket',
-    short: 'Rocket',
-    icon: CircleDollarSign,
-    numberHint: 'The Rocket number customers send to',
-  },
-  {
-    value: 'upay',
-    label: 'Upay',
-    short: 'Upay',
-    icon: Banknote,
-    numberHint: 'The Upay number customers send to',
-  },
-];
-
-export function providerLabel(provider: PaymentProvider): string {
-  return PROVIDERS.find((option) => option.value === provider)?.label ?? provider;
-}
-
-export function providerIcon(provider: PaymentProvider): LucideIcon {
-  return PROVIDERS.find((option) => option.value === provider)?.icon ?? Wallet;
-}
-
 /**
- * Why the engine refused, in language a seller can act on.
- *
- * The engine returns codes; this turns them into a sentence. Unknown codes fall
- * through to the raw value rather than being hidden, because a code we have
- * never seen is a signal worth seeing.
+ * Icons stay here, with the components they need. The label data is in
+ * ./presentation, which is pure and therefore testable outside React.
  */
-const REASON_COPY: Record<string, string> = {
-  no_candidate_intent: 'No waiting order matches this amount.',
-  ambiguous_candidates: 'Several waiting orders match. Choose which one it pays.',
-  insufficient_confidence: 'Not enough to confirm this on its own.',
-  account_mismatch: 'The money went to a different account than the one connected.',
-  intent_expired: 'The waiting order had already expired.',
-  amount_over: 'More than the order was expecting.',
-  amount_under: 'Less than the order was expecting.',
-  customer_phone_mismatch: 'Sent from a number that is not the customer on the order.',
-  account_and_amount: 'Account and amount match, but the sender could not be verified.',
-  account_amount_and_customer: 'Account, amount and customer all match.',
-  seller_assigned: 'You matched this payment yourself.',
-  record_payment_refused: 'The order would not accept this payment automatically.',
+const PROVIDER_ICON: Record<PaymentProvider, LucideIcon> = {
+  bkash: Smartphone,
+  nagad: Wallet,
+  rocket: CircleDollarSign,
+  upay: Banknote,
 };
 
-export function reasonCopy(code: string | null): string {
-  if (!code) return '';
-  return REASON_COPY[code] ?? code.replace(/_/g, ' ');
+export function providerIcon(provider: PaymentProvider): LucideIcon {
+return PROVIDER_ICON[provider] ?? Wallet;
 }
 
 // ---------------------------------------------------------------------------
@@ -669,48 +623,10 @@ export function usePaymentAudit(eventId: string | undefined) {
     },
   });
 
-  return {
+return {
     entries: query.data ?? [],
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,
   };
-}
-
-/** Human sentence for an audit action code. */
-export function auditCopy(action: string): string {
-  const copy: Record<string, string> = {
-    account_created: 'Account connected',
-    account_disconnected: 'Account disconnected',
-    account_status_changed: 'Account updated',
-    event_ingested: 'Payment detected',
-    event_duplicate: 'Same payment seen again (not counted twice)',
-    event_matched: 'Matched to an order',
-    event_confirmed: 'Order marked paid',
-    event_mismatched: 'Could not confirm automatically',
-    event_unmatched: 'No waiting order found',
-    intent_created: 'Waiting for this payment',
-    intent_cancelled: 'Stopped waiting',
-    intent_expired: 'Stopped waiting (expired)',
-    match_manually_assigned: 'Matched by you',
-    match_rejected: 'Dismissed by you',
-    order_payment_recorded: 'Payment recorded on the order',
-    subscription_activated: 'Subscription activated',
-  };
-  return copy[action] ?? action.replace(/_/g, ' ');
-}
-
-/** Short label for an event status, used on badges and rows. */
-export function eventStatusLabel(status: PaymentEventStatus): string {
-  const copy: Record<PaymentEventStatus, string> = {
-    detected: 'Detected',
-    matched: 'Matched',
-    confirmed: 'Confirmed',
-    unmatched: 'No order found',
-    mismatch: 'Does not match',
-    duplicate: 'Duplicate',
-    rejected: 'Rejected',
-    review_required: 'Needs review',
-  };
-  return copy[status];
 }

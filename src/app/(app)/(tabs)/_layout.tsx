@@ -69,10 +69,22 @@ export default function TabsLayout() {
           tabBarIcon: ({ color }) => <Receipt size={20} color={color} strokeWidth={1.75} />,
         }}
       />
+      {/*
+       * Payments lives OUTSIDE this tab group, at `src/app/(app)/payments.tsx`.
+       *
+       * A file at `(tabs)/payments.tsx` would resolve to the same `/payments` route as
+       * one at `(app)/payments.tsx`, and two screens competing for one path is a
+       * collision that surfaces as whichever one happens to be matched first. The hub
+       * also needs to be pushable from an order, so it has to be a stack route.
+       *
+       * `href` points this tab at that route. The screen itself is declared with
+       * `href: null` so the tab bar does not render a duplicate entry for it.
+       */}
       <Tabs.Screen
         name="payments"
         options={{
           title: 'Payments',
+          href: '/payments',
           tabBarIcon: ({ color }) => <Wallet size={20} color={color} strokeWidth={1.75} />,
         }}
       />

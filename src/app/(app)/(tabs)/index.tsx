@@ -23,6 +23,8 @@ import {
   type DashboardData,
   type ProfitCompleteness,
 } from '@/features/dashboard/queries';
+import { usePaymentAccounts } from '@/features/payments/queries';
+import { usePaymentHealth, type PaymentHealth } from '@/features/payments/intelligence';
 import { formatMajorUnits } from '@/lib/money';
 import { canWrite, useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -51,6 +53,10 @@ export default function DashboardScreen() {
   const { data, isPending, error, refetch } = useDashboard(store?.id);
   // A second, small query. It must not be able to take the dashboard down with it.
   const completeness = useProfitCompleteness(store?.id);
+  // Payment accounts and health, for the received/owed figures and the review badge.
+  const paymentOrg = useSession((state) => state.organization?.id);
+  const paymentAccounts = usePaymentAccounts(paymentOrg);
+  const health = usePaymentHealth(paymentOrg, paymentAccounts);
 
   if (error) {
     return (
@@ -87,7 +93,11 @@ export default function DashboardScreen() {
         {isPending || !data ? (
     <DashboardSkeleton />
   ) : (
-    <DashboardBody data={data} completeness={completeness.data ?? UNKNOWN_COMPLETENESS} />
+    <DashboardBody
+      data={data}
+      completeness={completeness.data ?? UNKNOWN_COMPLETENESS}
+      health={health}
+    />
   )}
       </View>
     </Screen>
@@ -130,9 +140,11 @@ const UNKNOWN_COMPLETENESS: ProfitCompleteness = {
 function DashboardBody({
   data,
   completeness,
+  health,
 }: {
   data: DashboardData;
   completeness: ProfitCompleteness;
+  health: PaymentHealth;
 }) {
   const { colors, spacing } = useTheme();
   const router = useRouter();
@@ -199,6 +211,77 @@ function DashboardBody({
             <Text variant="caption" tone="muted">
               {`${data.cod.orders} order${data.cod.orders === 1 ? '' : 's'} still with the courier`}
             </Text>
+          </View>
+        </Card>
+      ) : null}
+
+      {/*
+       * Money actually IN HAND, which is a different number from the revenue above.
+       *
+       * Revenue is what was SOLD. On a cash-on-delivery day the two differ by the whole
+       * courier float, and that difference is the number a seller is most likely to get
+       * wrong. So the received figure reads from recorded payments, and COD stays in its
+       * own card above, labelled as owed.
+       */}
+      <Card testID="dashboard-received">
+        <View style={{ gap: spacing.xxs }}>
+          <Text variant="micro" tone="muted">
+            MONEY RECEIVED TODAY
+          </Text>
+          <Text variant="numeric">{formatMajorUnits(health.receivedToday)}</Text>
+          <Text variant="caption" tone="muted">
+            {health.receivedCount === 0
+              ? 'No payment has been recorded as received yet.'
+              : `From ${health.receivedCount} recorded payment${health.receivedCount === 1 ? '' : 's'}`}
+          </Text>
+        </View>
+      </Card>
+
+      {/*
+       * Money owed. Outstanding is what customers owe on delivered orders; the COD line
+       * below it is what riders still hold. Both are receivable, neither is cash.
+       */}
+      {data.outstanding > 0 ? (
+        <Card elevation="flat">
+          <View style={{ gap: spacing.xxs }}>
+            <Text variant="micro" tone="muted">
+              STILL OWED TO YOU
+            </Text>
+            <Text variant="numeric">{formatMajorUnits(data.outstanding)}</Text>
+            <Text variant="caption" tone="muted">
+              {`${data.outstanding_orders} order${data.outstanding_orders === 1 ? '' : 's'} unpaid in full or in part`}
+            </Text>
+          </View>
+        </Card>
+      ) : null}
+
+      {/*
+       * Payments that arrived and were not attached to anything. The engine refused
+       * them on purpose; nothing has been applied to any order.
+       */}
+      {health.needsHuman > 0 ? (
+        <Card
+          elevation="flat"
+          style={{ borderColor: colors.warningBorder }}
+          testID="dashboard-payment-review"
+        >
+          <View style={{ gap: spacing.sm }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+              <TriangleAlert size={16} color={colors.warning} strokeWidth={1.75} />
+              <Text variant="bodyStrong">
+                {`${health.needsHuman} payment${health.needsHuman === 1 ? '' : 's'} to check`}
+              </Text>
+            </View>
+            <Text variant="caption" tone="muted">
+              Arrived but not attached to an order. No money has been applied.
+            </Text>
+            <Button
+              label="Review them"
+              variant="secondary"
+              fullWidth
+              onPress={() => router.push('/payment-review')}
+              testID="dashboard-review-open"
+            />
           </View>
         </Card>
       ) : null}

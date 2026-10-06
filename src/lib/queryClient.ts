@@ -95,4 +95,8 @@ notifications: () => ['notifications'] as const,
     orderIntents: (orderId: string) => ['payment-intents', 'order', orderId] as const,
     paymentReview: (orgId: string) => ['payment-review', orgId] as const,
     paymentActivity: (orgId: string) => ['payment-activity', orgId] as const,
+  // Received money and payment health. Separate from `paymentActivity`, which reads
+  // only CONFIRMED events and so cannot answer "how much is in hand" or "how many
+  // need checking" -- two questions that need the unsettled rows too.
+  paymentHealth: (orgId: string) => ['payment-health', orgId] as const,
   } as const;

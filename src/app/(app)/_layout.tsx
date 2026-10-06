@@ -23,6 +23,7 @@
 import { useEffect } from 'react';
 import { Redirect, Stack } from 'expo-router';
 
+import { PaymentDetection } from '@/components/payments/PaymentDetection';
 import { ErrorState, LoadingState } from '@/components/ui';
 import { useLock } from '@/store/lock';
 import { useSession } from '@/store/session';
@@ -71,8 +72,16 @@ export default function AppLayout() {
   if (hasPasscode && isLocked) return <Redirect href="/passcode" />;
 
   return (
-    <Stack
-      screenOptions={{
+    <>
+      {/*
+       * Detection runs for the whole authenticated area, not per screen. Mounted here
+       * so a payment that arrives while the seller is looking at an order is picked up,
+       * and so the component itself can refuse to listen while the app is locked.
+       */}
+      <PaymentDetection enabled />
+
+      <Stack
+        screenOptions={{
         headerShown: false,
         // Short native-stack slides: fast enough to feel instant, interruptible by an
         // immediate back gesture.
@@ -100,12 +109,23 @@ export default function AppLayout() {
       <Stack.Screen name="customer/[id]" />
       <Stack.Screen name="customer/[id]/edit" options={{ presentation: 'modal' }} />
 
+      {/*
+         * Payments lives at `(app)/payments.tsx` rather than inside the tab group, so
+         * that `/payments` has exactly one screen. The tab bar reaches it through
+         * `href`, and an order can push it too.
+         */}
+      <Stack.Screen name="payments" />
+      <Stack.Screen name="payment-review" />
+      <Stack.Screen name="payment-account/new" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="payment-intent/new" options={{ presentation: 'modal' }} />
+
       <Stack.Screen name="settings/account" />
       <Stack.Screen name="settings/business" />
       <Stack.Screen name="settings/appearance" />
       <Stack.Screen name="settings/notifications" />
       <Stack.Screen name="settings/support" />
       <Stack.Screen name="settings/data" />
-    </Stack>
+      </Stack>
+    </>
   );
 }
