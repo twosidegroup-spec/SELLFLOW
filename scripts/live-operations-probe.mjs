@@ -551,15 +551,33 @@ async function finish() {
   // nothing at all -- this is exactly how the first probe version left businesses
   // behind in the live project.
   for (const orgId of created.orgIds) {
-    for (const table of ['orders', 'inventory_movements', 'inventory', 'products', 'customers']) {
+    for (const table of [
+      // Leaf-first, and every payment table included: this probe creates orders, so a
+      // stray payment or event row would be stranded with its organization gone.
+      'payment_matches',
+      'payment_events',
+      'payment_intents',
+      'payments',
+      'order_items',
+      'orders',
+      'inventory_movements',
+      'inventory',
+      'products',
+      'customers',
+    ]) {
       const { error } = await admin.from(table).delete().eq('org_id', orgId);
       if (error) console.log(`  WARN  ${table}: ${error.message}`);
     }
     // Stores cascade from the organization; membership rows do not.
-    await admin.from('organization_members').delete().eq('org_id', orgId);
-    await admin.from('payment_accounts').delete().eq('org_id', orgId);
-    await admin.from('stores').delete().eq('org_id', orgId);
-    await admin.from('organizations').delete().eq('id', orgId);
+    for (const table of ['order_status_history', 'organization_members', 'payment_accounts', 'stores']) {
+      const { error } = await admin.from(table).delete().eq('org_id', orgId);
+      if (error) console.log(`  WARN  ${table}: ${error.message}`);
+    }
+
+    // Checked. This delete was unchecked, and that is how two organizations were
+    // left sitting in the production project while this probe reported success.
+    const { error } = await admin.from('organizations').delete().eq('id', orgId);
+    if (error) console.log(`  WARN  organization ${orgId}: ${error.message}`);
   }
 
   for (const userId of created.userIds) await deleteUser(userId, admin);
@@ -584,6 +602,20 @@ async function finish() {
     (leftoverOrgs ?? []).length === 0,
     'zero probe organizations remain',
     JSON.stringify(leftoverOrgs),
+  );
+
+  // Verified by ID as well as by name pattern. A pattern cannot see a row whose name
+  // it failed to predict, and that blind spot is exactly how two organizations were
+  // left behind in production while this probe reported a clean run.
+  const { data: orgsById, error: byIdErr } = await admin
+    .from('organizations')
+    .select('id')
+    .in('id', created.orgIds);
+  check(!byIdErr, 'the id verification query ran', byIdErr?.message);
+  check(
+    (orgsById ?? []).length === 0,
+    'zero of THIS run probe organizations remain',
+    JSON.stringify(orgsById),
   );
   check(
     leftoverIdentities.length === 0,

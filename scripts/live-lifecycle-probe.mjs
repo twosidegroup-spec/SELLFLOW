@@ -280,11 +280,39 @@ async function deleteUser(userId, admin) {
     .eq('user_id', userId);
 
   for (const { org_id: orgId } of memberships ?? []) {
-    await admin.from('payment_accounts').delete().eq('org_id', orgId);
-    await admin.from('orders').delete().eq('org_id', orgId);
-    await admin.from('customers').delete().eq('org_id', orgId);
-    // CASCADES to stores, organization_members, payment_intents, expenses.
-    await admin.from('organizations').delete().eq('id', orgId);
+    /*
+     * Leaf-first, every delete error checked.
+     *
+     * The organization delete here was unchecked and its error discarded, and two
+     * organizations from this probe were found sitting in the production project
+     * afterwards. Four of them, in fact, across two runs -- invisible because
+     * verification searched by NAME PATTERN and could not see a row whose cleanup it
+     * failed to predict.
+     */
+    for (const table of [
+      'payment_matches',
+      'payment_events',
+      'payment_audit_logs',
+      'payment_intents',
+      'payments',
+      'order_items',
+      'orders',
+      'inventory_movements',
+      'inventory',
+      'products',
+      'customers',
+      'payment_accounts',
+      'order_status_history',
+      'organization_members',
+      'stores',
+    ]) {
+      const { error } = await admin.from(table).delete().eq('org_id', orgId);
+      if (error) console.log(`  WARN  ${table} for ${orgId}: ${error.message}`);
+    }
+
+    // CASCADES to expenses.
+    const { error } = await admin.from('organizations').delete().eq('id', orgId);
+    if (error) console.log(`  WARN  organization ${orgId}: ${error.message}`);
   }
 
   const { error } = await admin.auth.admin.deleteUser(userId);
@@ -314,14 +342,28 @@ async function finish() {
     const remaining = (users?.users ?? []).filter((u) => (u.email ?? '').includes(stamp));
     check(remaining.length === 0, 'zero probe identities remain', `found ${remaining.length}`);
 
-    const { data: remainingOrgs } = await admin
+    const { data: remainingOrgs, error: orgsErr } = await admin
       .from('organizations')
       .select('id')
       .like('name', `%${stamp}%`);
+    check(!orgsErr, 'the pattern verification query ran', orgsErr?.message);
     check(
       (remainingOrgs ?? []).length === 0,
       'zero probe organizations remain',
       `found ${remainingOrgs?.length}`,
+    );
+
+    // By ID as well. A name pattern cannot see a leftover whose name it failed to
+    // predict, and that blind spot is how four organizations survived in production
+    // while this probe reported a clean run.
+    const { data: orgsById } = await admin
+      .from('organizations')
+      .select('id')
+      .in('id', created.orgIds);
+    check(
+      (orgsById ?? []).length === 0,
+      'zero of THIS run probe organizations remain',
+      `found ${orgsById?.length}`,
     );
 
     const { data: remainingAccounts } = await admin

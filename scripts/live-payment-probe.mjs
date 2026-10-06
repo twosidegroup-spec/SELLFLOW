@@ -617,31 +617,43 @@ async function finish() {
     console.log('\n  WARN  no service key: cleanup was NOT verified.');
     return;
   }
-  const admin = createClient(url, key, { auth: { persistSession: false } });
+const admin = createClient(url, key, { auth: { persistSession: false } });
 
-  // Leaf-first. Deleting identities first trips the organizations FK and removes
-  // nothing, which is how an earlier probe left businesses behind.
+  /*
+   * Leaf-first, identity last, and EVERY delete error is checked.
+   *
+   * This block used to ignore the error on the organization delete and verify by
+   * NAME PATTERN, and it reported "zero probe organizations remain" while leaving four
+   * behind in the production project. Two separate flaws:
+   *
+   *   an unchecked delete that fails leaves rows, and
+   *   a name pattern cannot see a row it fails to predict the name of
+   *
+   * So: check every error, and verify against the exact ids this run created rather
+   * than a LIKE over names.
+   */
+  const leafTables = [
+    'payment_matches',
+    'payment_events',
+    'payment_audit_logs',
+    'payment_intents',
+    'payments',
+    'order_items',
+    'orders',
+    'products',
+    'inventory',
+    'inventory_movements',
+    'customers',
+  ];
+  const parentTables = ['payment_accounts', 'order_status_history', 'organization_members', 'stores'];
+
   for (const orgId of created.orgIds) {
-    for (const table of [
-      'payment_matches',
-      'payment_events',
-      'payment_audit_logs',
-      'payment_intents',
-      'payments',
-      'order_items',
-      'orders',
-      'products',
-      'inventory',
-      'inventory_movements',
-      'customers',
-    ]) {
+    for (const table of [...leafTables, ...parentTables]) {
       const { error } = await admin.from(table).delete().eq('org_id', orgId);
-      if (error) console.log(`  WARN  ${table}: ${error.message}`);
+      if (error) console.log(`  WARN  ${table} for ${orgId}: ${error.message}`);
     }
-    await admin.from('payment_accounts').delete().eq('org_id', orgId);
-    await admin.from('organization_members').delete().eq('org_id', orgId);
-    await admin.from('stores').delete().eq('org_id', orgId);
-    await admin.from('organizations').delete().eq('id', orgId);
+    const { error } = await admin.from('organizations').delete().eq('id', orgId);
+    if (error) console.log(`  WARN  organization ${orgId}: ${error.message}`);
   }
 
   for (const userId of created.userIds) {
@@ -649,26 +661,30 @@ async function finish() {
     if (error) console.log(`  WARN  identity ${userId}: ${error.message}`);
   }
 
-  // Verified, not asserted.
-  const { data: orgs, error: orgsErr } = await admin
+  // Verified by ID. A pattern can miss; an id cannot.
+  const { data: orgsById, error: byIdErr } = await admin
+    .from('organizations')
+    .select('id, name')
+    .in('id', created.orgIds);
+  check(!byIdErr, 'the verification query itself ran', byIdErr?.message);
+  check(
+    (orgsById ?? []).length === 0,
+    'zero of THIS run probe organizations remain',
+    (orgsById ?? []).map((o) => o.name).join(', '),
+  );
+
+  // And by pattern as well, so a run that created more than it tracked is still caught.
+  const { data: orgsByName, error: byNameErr } = await admin
     .from('organizations')
     .select('id')
     .like('name', `%${stamp}%`);
-  check(!orgsErr, 'the cleanup query itself ran', orgsErr?.message);
-  check((orgs ?? []).length === 0, 'zero probe organizations remain');
+  check(!byNameErr, 'the pattern verification query ran', byNameErr?.message);
+  check((orgsByName ?? []).length === 0, 'zero organizations matching this run stamp remain');
 
   for (const orgId of created.orgIds) {
-    for (const table of [
-      'orders',
-      'payments',
-      'payment_events',
-      'payment_intents',
-      'payment_accounts',
-      'products',
-      'customers',
-    ]) {
+    for (const table of ['orders', 'payments', 'payment_events', 'payment_intents', 'products', 'customers']) {
       const { data } = await admin.from(table).select('id').eq('org_id', orgId);
-      check((data ?? []).length === 0, `zero ${table} remain for the probe org`);
+      check((data ?? []).length === 0, `zero ${table} remain for ${orgId}`);
     }
   }
 
