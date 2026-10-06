@@ -51,11 +51,28 @@ function adminKey() {
 /**
  * Markers that identify a probe tenant.
  *
- * Matched against the organization name, which every probe sets from its own stamp.
- * Deliberately specific: `Probe Seller`, `Device Test`, `Pay Seller`, `v2ops`, `v2pay`
- * and `v2life` are all names this codebase's own tooling produces.
+ * Matched against the organization name, which every probe sets from its own naming
+ * scheme. Deliberately specific: these are the names this repository's own tooling
+ * produces, and nothing else.
+ *
+ * The list is kept explicit rather than pattern-matched on a loose prefix, because a
+ * marker that matches too much would eventually eat a real business. It was extended
+ * with `v2iso` and `ISO ` only after a temporary probe used a scheme nobody had listed,
+ * and its organisations survived a reap that reported success.
  */
-const PROBE_MARKERS = [/Probe Seller/i, /Device Test/i, /Pay Seller/i, /v2ops/i, /v2pay/i, /v2life/i, /v2m25/i];
+const PROBE_MARKERS = [
+  /Probe Seller/i,
+  /Device Test/i,
+  /Pay Seller/i,
+  /Ops Seller/i,
+  /COD Probe/i,
+  /^ISO /i,
+  /v2ops/i,
+  /v2pay/i,
+  /v2life/i,
+  /v2m25/i,
+  /v2iso/i,
+];
 
 /**
  * Identity markers.
