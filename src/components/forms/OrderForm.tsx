@@ -55,7 +55,7 @@ import { BLANK_FORM_TEMPLATE, parseOrderForm } from '@/features/orders/orderForm
 import { useProductPicker } from '@/features/products/queries';
 import type { PaymentMethod } from '@/lib/database.types';
 import { AppError } from '@/lib/errors';
-import { formatMoney, money, toMajor, zero } from '@/lib/money';
+import { formatMajorUnits, formatMoney, money, toMajor, zero } from '@/lib/money';
 import { createClientRef } from '@/lib/connectivity';
 import { canWrite, useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -539,7 +539,7 @@ notes: notes.trim() || null,
                             gap: spacing.xs,
                           }}
                         >
-                          <Text variant="numeric">{formatMoney(product.selling_price)}</Text>
+                          <Text variant="numeric">{formatMajorUnits(product.selling_price)}</Text>
                           <Plus size={16} color={colors.textMuted} strokeWidth={1.75} />
                         </View>
                       </View>

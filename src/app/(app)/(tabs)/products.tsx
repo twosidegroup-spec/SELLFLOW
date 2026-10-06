@@ -20,8 +20,8 @@ import { Archive, Package } from 'lucide-react-native';
 
 import { ListScreen } from '@/components/ListScreen';
 import { Badge, Card, SearchBar, Text } from '@/components/ui';
+import { formatMajorUnits } from '@/lib/money';
 import { useProducts } from '@/features/products/queries';
-import { formatMoney } from '@/lib/money';
 import { useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -196,7 +196,7 @@ function ProductCard({
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          <Text variant="numeric">{formatMoney(sellingPrice)}</Text>
+          <Text variant="numeric">{formatMajorUnits(sellingPrice)}</Text>
 
           {archived ? (
             <Badge label="ARCHIVED" tone="neutral" />

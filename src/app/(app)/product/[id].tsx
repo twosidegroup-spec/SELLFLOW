@@ -28,7 +28,7 @@ import {
   INVENTORY_REASON_LABEL,
   MANUAL_STOCK_REASONS,
 } from '@/features/products/presentation';
-import { formatMoney } from '@/lib/money';
+import { formatMajorUnits } from '@/lib/money';
 import type { InventoryReason } from '@/lib/database.types';
 import { AppError } from '@/lib/errors';
 import { canWrite, useSession } from '@/store/session';
@@ -144,7 +144,7 @@ export default function ProductDetailScreen() {
         {/* ---- Money ---- */}
         <Card>
           <View style={{ gap: spacing.md }}>
-            <Row label="Selling price" value={formatMoney(row.selling_price)} />
+            <Row label="Selling price" value={formatMajorUnits(row.selling_price)} />
             <Divider style={{ marginVertical: spacing.none }} />
             {/*
              * A missing cost is stated, never rendered as ৳0.00. Zero would claim the
@@ -154,7 +154,7 @@ export default function ProductDetailScreen() {
             <Row
               label="Cost price"
               value={
-                row.cost_price === null ? 'Not recorded' : formatMoney(row.cost_price)
+                row.cost_price === null ? 'Not recorded' : formatMajorUnits(row.cost_price)
               }
               muted={row.cost_price === null}
             />
@@ -163,7 +163,7 @@ export default function ProductDetailScreen() {
                 <Divider style={{ marginVertical: spacing.none }} />
                 <Row
                   label="Profit per unit"
-                  value={formatMoney(row.selling_price - row.cost_price)}
+                  value={formatMajorUnits(row.selling_price - row.cost_price)}
                   tone={row.selling_price - row.cost_price > 0 ? 'success' : 'danger'}
                 />
               </>

@@ -28,7 +28,7 @@ import {
 import { useCustomer, useCustomerStats } from '@/features/customers/queries';
 import { ORDER_STATUS_LABEL, orderStatusTone } from '@/features/orders/presentation';
 import { useCustomerOrders } from '@/features/orders/queries';
-import { formatMoney } from '@/lib/money';
+import { formatMajorUnits } from '@/lib/money';
 import { canWrite, useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -97,7 +97,7 @@ export default function CustomerDetailScreen() {
             >
               {/* Stats load on their own query, so an explicit dash beats a
                   misleading ৳0.00 for the moment it has not arrived. */}
-              {s ? formatMoney(s.outstanding) : '—'}
+              {s ? formatMajorUnits(s.outstanding) : '—'}
             </Text>
           </Card>
           <Card elevation="flat" style={{ flex: 1 }}>
@@ -110,7 +110,7 @@ export default function CustomerDetailScreen() {
             <Text variant="caption" tone="muted">
               Total spent
             </Text>
-            <Text variant="numeric">{s ? formatMoney(s.total_spent) : '—'}</Text>
+            <Text variant="numeric">{s ? formatMajorUnits(s.total_spent) : '—'}</Text>
           </Card>
         </View>
 
@@ -191,7 +191,7 @@ export default function CustomerDetailScreen() {
                         <Text variant="caption" tone="muted">
                           {new Date(order.placed_at).toLocaleDateString()}
                         </Text>
-                        <Text variant="caption">{formatMoney(order.total)}</Text>
+                        <Text variant="caption">{formatMajorUnits(order.total)}</Text>
                       </View>
                     </Card>
                   )}

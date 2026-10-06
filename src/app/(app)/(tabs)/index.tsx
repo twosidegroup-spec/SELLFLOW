@@ -23,7 +23,7 @@ import {
   type DashboardData,
   type ProfitCompleteness,
 } from '@/features/dashboard/queries';
-import { formatMoney } from '@/lib/money';
+import { formatMajorUnits } from '@/lib/money';
 import { canWrite, useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -153,7 +153,7 @@ function DashboardBody({
           <Text variant="micro" tone="muted">
             REVENUE TODAY
           </Text>
-          <Text variant="numericLarge">{formatMoney(data.today.revenue)}</Text>
+          <Text variant="numericLarge">{formatMajorUnits(data.today.revenue)}</Text>
           <Text variant="caption" tone="muted">
             {`${data.today.orders} order${data.today.orders === 1 ? '' : 's'}`}
           </Text>
@@ -169,14 +169,14 @@ function DashboardBody({
            * shown as a number with the caveat attached, because "Not recorded" on a day
            * that genuinely recorded costs would be the other kind of wrong.
            */
-          value={formatMoney(data.today.profit)}
+          value={formatMajorUnits(data.today.profit)}
           hint={todayPartial ? 'at least — some costs unrecorded' : undefined}
           tone={todayPartial ? 'muted' : data.today.profit > 0 ? 'success' : data.today.profit < 0 ? 'danger' : 'default'}
           width="48%"
         />
         <Metric
           label="Average order"
-          value={formatMoney(data.aov_month)}
+          value={formatMajorUnits(data.aov_month)}
           hint="this month"
           width="48%"
         />
@@ -194,7 +194,7 @@ function DashboardBody({
               CASH ON DELIVERY — OWED TO YOU
             </Text>
             <Text variant="numeric" tone="accent">
-              {formatMoney(data.cod.pending_settlement)}
+              {formatMajorUnits(data.cod.pending_settlement)}
             </Text>
             <Text variant="caption" tone="muted">
               {`${data.cod.orders} order${data.cod.orders === 1 ? '' : 's'} still with the courier`}
@@ -367,7 +367,7 @@ function OrderRow({ order }: { order: DashboardData['recent_orders'][number] }) 
           {order.order_number}
         </Text>
       </View>
-      <Text variant="numeric">{formatMoney(order.total)}</Text>
+      <Text variant="numeric">{formatMajorUnits(order.total)}</Text>
       <Button
         label="Open"
         variant="ghost"

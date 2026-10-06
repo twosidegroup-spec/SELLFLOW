@@ -52,7 +52,7 @@ import {
 } from '@/features/orders/queries';
 import type { PaymentMethod } from '@/lib/database.types';
 import { AppError } from '@/lib/errors';
-import { formatMoney, toMajor } from '@/lib/money';
+import { formatMajorUnits, toMajor } from '@/lib/money';
 import { canWrite, useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -166,7 +166,7 @@ export default function OrderDetailScreen() {
           <Card elevation="flat" style={{ borderColor: colors.warningBorder }}>
             <View style={{ gap: spacing.xxs }}>
               <Text variant="caption" tone="warning">
-                Cash on delivery — {formatMoney(row.cod_amount)} to collect.
+                Cash on delivery — {formatMajorUnits(row.cod_amount)} to collect.
               </Text>
               <Text variant="caption" tone="muted">
                 This is not counted as money in hand until the courier pays out.
@@ -177,7 +177,7 @@ export default function OrderDetailScreen() {
         {row.is_cod && row.cod_settled ? (
           <Card elevation="flat" style={{ borderColor: colors.successBorder }}>
             <Text variant="caption" tone="success">
-              {`Courier paid out ${formatMoney(row.cod_amount)}.`}
+              {`Courier paid out ${formatMajorUnits(row.cod_amount)}.`}
             </Text>
           </Card>
         ) : null}
@@ -224,10 +224,10 @@ export default function OrderDetailScreen() {
                           {line.variant_name ? ` · ${line.variant_name}` : ''}
                         </Text>
                         <Text variant="caption" tone="muted">
-                          {`${line.quantity} × ${formatMoney(line.unit_price)}`}
+                          {`${line.quantity} × ${formatMajorUnits(line.unit_price)}`}
                         </Text>
                       </View>
-                      <Text variant="numeric">{formatMoney(line.line_total)}</Text>
+                      <Text variant="numeric">{formatMajorUnits(line.line_total)}</Text>
                     </View>
                   </View>
                 ))}
@@ -235,14 +235,14 @@ export default function OrderDetailScreen() {
                 <Divider />
 
                 <View style={{ gap: spacing.xxs }}>
-                  <Row label="Items" value={formatMoney(row.items_total)} />
+                  <Row label="Items" value={formatMajorUnits(row.items_total)} />
                   {row.discount > 0 ? (
-                    <Row label="Discount" value={`- ${formatMoney(row.discount)}`} />
+                    <Row label="Discount" value={`- ${formatMajorUnits(row.discount)}`} />
                   ) : null}
                   {row.delivery_charge > 0 ? (
-                    <Row label="Delivery" value={formatMoney(row.delivery_charge)} />
+                    <Row label="Delivery" value={formatMajorUnits(row.delivery_charge)} />
                   ) : null}
-                  <Row label="Total" value={formatMoney(row.total)} emphasis />
+                  <Row label="Total" value={formatMajorUnits(row.total)} emphasis />
                 </View>
               </View>
             </Card>
@@ -265,7 +265,7 @@ export default function OrderDetailScreen() {
             ) : (
               <DetailRow
                 label="Profit"
-                value={formatMoney(row.profit)}
+                value={formatMajorUnits(row.profit)}
                 numeric
                 tone={row.profit < 0 ? 'danger' : 'success'}
               />
@@ -278,10 +278,10 @@ export default function OrderDetailScreen() {
 
           <Card>
             <View style={{ gap: spacing.md }}>
-              <DetailRow label="Paid" value={formatMoney(paid)} numeric />
+              <DetailRow label="Paid" value={formatMajorUnits(paid)} numeric />
               <DetailRow
                 label="Still due"
-                value={formatMoney(due)}
+                value={formatMajorUnits(due)}
                 numeric
                 tone={due > 0 ? 'danger' : 'success'}
               />
@@ -309,8 +309,8 @@ export default function OrderDetailScreen() {
                         tone={payment.is_refund ? 'danger' : 'default'}
                       >
                         {payment.is_refund
-                          ? `- ${formatMoney(payment.amount)}`
-                          : formatMoney(payment.amount)}
+                          ? `- ${formatMajorUnits(payment.amount)}`
+                          : formatMajorUnits(payment.amount)}
                       </Text>
                     </View>
                   ))}
@@ -324,7 +324,7 @@ export default function OrderDetailScreen() {
                       label="Amount received"
                       value={paymentAmount}
                       onChange={setPaymentAmount}
-                      hint={`Up to ${formatMoney(due)}.`}
+                      hint={`Up to ${formatMajorUnits(due)}.`}
                       testID="payment-amount"
                     />
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>

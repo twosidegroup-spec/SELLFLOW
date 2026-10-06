@@ -12,6 +12,8 @@
 import './__stubs__/env.mjs';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
 import {
   addLineToDraft,
@@ -31,10 +33,93 @@ import {
   orderStatusTone,
   paymentStatusTone,
 } from '../src/features/orders/presentation.ts';
-import { money, parseWholeNumber, toMajor, toMinor, zero } from '../src/lib/money.ts';
+import {
+  formatMajorUnits,
+  formatMoney,
+  money,
+  parseWholeNumber,
+  toMajor,
+  toMinor,
+  zero,
+} from '../src/lib/money.ts';
+
+function walk(dir, out = []) {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) walk(full, out);
+    else if (full.endsWith('.tsx')) out.push(full);
+  }
+  return out;
+}
 import { normalizeBdNumber, isBdMobileNumber } from '../src/features/payments/normalize.ts';
 
 const TAKA = (n) => toMinor(String(n));
+
+describe('a column value is never formatted as if it were minor units', () => {
+  /*
+   * `formatMoney` divides by 100 because it takes MINOR units. Every money column and
+   * every RPC amount in this schema is numeric(14,2) in WHOLE units.
+   *
+   * Passing one to the other shows a seller 50.60 for revenue that was 5,060. Both
+   * functions are individually correct, so no test of either catches it -- and no unit
+   * test of the arithmetic would either, because the arithmetic is on raw numbers.
+   *
+   * It was found by reading the running app on a real device against seeded data of
+   * known size. This is the check that stops it coming back.
+   */
+  const moneyFiles = walk(join(process.cwd(), 'src'))
+    .filter((f) => f.endsWith('.tsx'));
+
+  const DB_FIELD =
+    /\b(?:row|order|line|payment|product|customer|s|data|event|s)\.(?:total|total_|items_total|profit|cost_total|courier_cost|other_cost|amount_paid|amount|revenue|unit_price|unit_cost|line_total|line_discount|selling_price|cost_price|discount|delivery_charge|outstanding|total_spent|pending_settlement|net_profit|revenue_collected)\b/;
+
+  const offenders = [];
+
+  for (const file of moneyFiles) {
+    const lines = readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('//') || trimmed.startsWith('*')) return;
+      // Only a direct formatMoney(<column field>) is caught. Arithmetic on the value
+      // first, e.g. formatMoney(order.total - order.amount_paid), is still wrong but
+      // is named explicitly by its own arithmetic; this catches the direct cases.
+      if (!/formatMoney\(/.test(line)) return;
+      const arg = line.match(/formatMoney\(([^)]*)\)/)?.[1] ?? '';
+      if (DB_FIELD.test(arg)) {
+        offenders.push(
+          `  ${file.replace(/\\/g, '/').split('/src/')[1]}:${index + 1}  ${trimmed}\n` +
+            '         that is a database value in whole taka. Use formatMajorUnits(), which expects it.',
+        );
+      }
+    });
+  }
+
+  test('no database money value reaches the minor-unit formatter', () => {
+    if (offenders.length) {
+      assert.fail(
+        `${offenders.length} column value(s) formatted as minor units:\n${offenders.join('\n')}`,
+      );
+    }
+  });
+
+  test('formatMajorUnits and formatMoney are a hundred times apart', () => {
+    // Asserted on the DIGITS, not the symbol: this platform's ICU renders the BDT
+    // sign as "Tk" rather than "৳", and a symbol assertion would be a test of the
+    // host rather than of the code.
+const digits = (formatted) => formatted.replace(/[^\d.]/g, '');
+
+    // No grouping assertion: ICU inserts a thousands separator on some hosts and not
+    // others, and that is a fact about the platform rather than about this code.
+    assert.equal(formatMajorUnits(5060), formatMoney(506000));
+    assert.equal(digits(formatMajorUnits(5060)), '5060.00');
+    assert.equal(digits(formatMoney(5060)), '50.60');
+    assert.equal(digits(formatMajorUnits(0)), '0.00');
+    assert.equal(digits(formatMajorUnits(null)), '0.00');
+    // The seeded revenue from the device verification, so this test is anchored to
+    // the exact figure that was wrong on screen.
+    assert.equal(digits(formatMajorUnits(5060)), digits(formatMoney(toMinor(String(5060)))));
+  });
+});
 
 describe('money and counts stay apart', () => {
   test('a count of 5 is never 500', () => {

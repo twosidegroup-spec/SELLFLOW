@@ -141,6 +141,36 @@ export function money(value: number | null | undefined, currency: CurrencyCode =
 }
 
 /**
+ * Format a money value that came straight off the database.
+ *
+ * Every money column and every RPC amount in this schema is `numeric(14,2)`, and
+ * PostgREST returns that as a plain JSON number in WHOLE units: 5060 means five
+ * thousand taka. `formatMoney`, by contrast, takes MINOR units, because everything
+ * computed in the app is held in poisha to avoid float drift.
+ *
+ * Handing a column value straight to `formatMoney` therefore divides it by 100, and
+ * the app shows a seller 50.60 for revenue that was actually 5,060. That is not a
+ * rounding bug, it is a hundredfold lie about the one number the product exists to
+ * get right, and it is invisible in a unit test because both functions are correct.
+ * It was found by reading the running app against known seeded data.
+ *
+ * So the two paths have different names, and the database one says so:
+ *
+ *   formatMoney(...)       minor units -- app arithmetic, calculations, MoneyInput
+ *   formatMajorUnits(...)  whole taka -- anything read from a column or an RPC
+ *
+ * Prefer this over wrapping in `money()`: a wrapper is invisible at the call site,
+ * and the call site is exactly where the mistake gets made.
+ */
+export function formatMajorUnits(
+  amount: number | null | undefined,
+  currency: CurrencyCode = DEFAULT_CURRENCY,
+  options: { showSymbol?: boolean; showZeroDecimals?: boolean } = {},
+): string {
+  return formatMoney(money(amount ?? 0, currency), currency, options);
+}
+
+/**
  * Convert minor units back to the whole taka a column or RPC parameter holds.
  *
  * The exact inverse of `toMinor`, and the conversion every WRITE needs. The

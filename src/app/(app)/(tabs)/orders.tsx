@@ -22,7 +22,7 @@ import { ListScreen } from '@/components/ListScreen';
 import { Badge, Card, SearchBar, Text } from '@/components/ui';
 import { ORDER_STATUS_LABEL, orderStatusTone } from '@/features/orders/presentation';
 import { useOrders, type OrderFilter } from '@/features/orders/queries';
-import { formatMoney } from '@/lib/money';
+import { formatMajorUnits } from '@/lib/money';
 import { canWrite, useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 import { Pressable, View } from 'react-native';
@@ -146,7 +146,7 @@ export default function OrdersScreen() {
                     <Text variant="caption" tone="muted">
                       {`#${order.order_number} · ${new Date(order.placed_at).toLocaleDateString()}`}
                     </Text>
-                    <Text variant="numeric">{formatMoney(order.total)}</Text>
+                    <Text variant="numeric">{formatMajorUnits(order.total)}</Text>
                   </View>
 
                   {/*
@@ -160,7 +160,7 @@ export default function OrdersScreen() {
                       style={{ marginTop: spacing.xxs }}
                       testID={`order-due-${order.id}`}
                     >
-                      {`${formatMoney(order.total - order.amount_paid)} due`}
+                      {`${formatMajorUnits(order.total - order.amount_paid)} due`}
                     </Text>
                   ) : null}
                 </Card>

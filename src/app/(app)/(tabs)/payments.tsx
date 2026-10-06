@@ -15,7 +15,7 @@ import { Radio, Wallet } from 'lucide-react-native';
 
 import { Card, ErrorState, Screen, Skeleton, Text } from '@/components/ui';
 import { providerLabel, usePaymentAccounts, usePaymentActivity } from '@/features/payments/queries';
-import { formatMoney } from '@/lib/money';
+import { formatMajorUnits } from '@/lib/money';
 import { canWrite, useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -148,7 +148,7 @@ export default function PaymentsScreen() {
                         ? 'Payment'
                         : providerLabel(event.provider)}
                     </Text>
-                    <Text variant="numeric">{formatMoney(event.amount)}</Text>
+                    <Text variant="numeric">{formatMajorUnits(event.amount)}</Text>
                   </View>
                   <Text variant="caption" tone="muted">
                     {event.matched_intent_id === null
