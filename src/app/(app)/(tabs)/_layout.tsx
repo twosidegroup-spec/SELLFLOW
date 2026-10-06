@@ -12,7 +12,7 @@
 
 import { Tabs } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
-import { Boxes, LayoutDashboard, Receipt, Users, Wallet } from 'lucide-react-native';
+import { Boxes, LayoutDashboard, Receipt, Users } from 'lucide-react-native';
 
 import { useTheme } from '@/theme/ThemeProvider';
 import { layout as layoutTokens } from '@/theme/tokens';
@@ -70,24 +70,22 @@ export default function TabsLayout() {
         }}
       />
       {/*
-       * Payments lives OUTSIDE this tab group, at `src/app/(app)/payments.tsx`.
+       * NO PAYMENTS TAB, DELIBERATELY.
        *
-       * A file at `(tabs)/payments.tsx` would resolve to the same `/payments` route as
-       * one at `(app)/payments.tsx`, and two screens competing for one path is a
-       * collision that surfaces as whichever one happens to be matched first. The hub
-       * also needs to be pushable from an order, so it has to be a stack route.
+       * The Payments hub must live at `src/app/(app)/payments.tsx` and be registered in
+       * the (app) stack, so that an order can push it and it is a real navigation
+       * target rather than a tab. That path is `/payments`.
        *
-       * `href` points this tab at that route. The screen itself is declared with
-       * `href: null` so the tab bar does not render a duplicate entry for it.
+       * A tab that links to `/payments` still needs a FILE inside `(tabs)` whose name
+       * matches, and that file would resolve to `/payments` as well. Two screens
+       * competing for one path is undefined behaviour that surfaces as whichever the
+       * router happens to match first -- so the tab was tried, observed to disappear
+       * from the tab bar entirely, and removed rather than left half-working.
+       *
+       * Payments is reached from the dashboard, which already surfaces what needs
+       * attention, and from the account screen. Four tabs that all work beats five with
+       * one that silently vanishes.
        */}
-      <Tabs.Screen
-        name="payments"
-        options={{
-          title: 'Payments',
-          href: '/payments',
-          tabBarIcon: ({ color }) => <Wallet size={20} color={color} strokeWidth={1.75} />,
-        }}
-      />
       <Tabs.Screen
         name="products"
         options={{

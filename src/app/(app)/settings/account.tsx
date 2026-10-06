@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Building2, ChevronRight, Store } from 'lucide-react-native';
+import { Building2, ChevronRight, Store, Wallet } from 'lucide-react-native';
 
 import SetPasscode from '../../set-passcode';
 import { Button, Card, Divider, Screen, Text } from '@/components/ui';
@@ -22,7 +22,7 @@ import { useSession } from '@/store/session';
 import { useTheme } from '@/theme/ThemeProvider';
 
 export default function AccountScreen() {
-  const { spacing } = useTheme();
+  const { colors, spacing } = useTheme();
   const router = useRouter();
 
   const user = useSession((state) => state.user);
@@ -66,9 +66,33 @@ export default function AccountScreen() {
   return (
     <Screen testID="account-screen" width="form">
       <View style={{ gap: spacing.lg }}>
-        <View style={{ gap: spacing.xxs }}>
+<View style={{ gap: spacing.xxs }}>
           <Text variant="title">Account</Text>
         </View>
+
+        {/*
+         * Payments is a stack route rather than a tab, so it gets an explicit entry
+         * point here. It sits high on the screen because receiving money and confirming
+         * a payment are the two things a seller opens the app to do.
+         */}
+        <Card>
+          <View style={{ gap: spacing.sm }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+              <Wallet size={16} color={colors.textMuted} strokeWidth={1.75} />
+              <Text variant="bodyStrong">Payments</Text>
+            </View>
+            <Text variant="caption" tone="muted">
+              The bKash, Nagad, Rocket and Upay numbers you receive into, automatic
+              detection, and payments that need checking.
+            </Text>
+            <Button
+              label="Open Payments"
+              variant="secondary"
+              onPress={() => router.push('/payments')}
+              testID="account-open-payments"
+            />
+          </View>
+        </Card>
 
         <Card>
           <View style={{ gap: spacing.xs }}>
