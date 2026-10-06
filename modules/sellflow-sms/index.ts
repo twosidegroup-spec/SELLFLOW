@@ -13,11 +13,8 @@
  * not available on this platform.
  */
 
-import {
-  NativeModules,
-  Platform,
-  type EventSubscription,
-} from 'react-native';
+import { Platform, type EventSubscription } from 'react-native';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 
 import type {
   DiagnosticsParseResult,
@@ -90,13 +87,33 @@ interface SellflowSmsNativeModule {
   ): EventSubscription;
 }
 
-const native = (NativeModules as Record<string, unknown>).SellflowSms as
-  | SellflowSmsNativeModule
-  | undefined
-  | null;
+/*
+ * THE NATIVE MODULE LOOKUP. This was wrong, and it silently disabled the whole
+ * feature.
+ *
+ * `SellflowSmsModule` is declared `class SellflowSmsModule : Module()`, which is the
+ * EXPO MODULES API. Those register in the Expo module registry, not in React Native's
+ * legacy `NativeModules` bridge. Reading `NativeModules.SellflowSms` therefore returned
+ * undefined on every build, `isNativeListenerAvailable` was false, and
+ * `getListenerStatus()` reported `unsupported`.
+ *
+ * Verified on BlueStacks API 25: with RECEIVE_SMS granted via adb, the app showed
+ * "Not available on this device" and "Listener registered: No" -- correct and honest,
+ * and completely non-functional. The receiver never started.
+ *
+ * `requireOptionalNativeModule` is the right accessor. It is also the one that keeps
+ * working if the module is ever moved back to the bridge, because it falls back to the
+ * bridge proxy internally.
+ *
+ * The status module never lied about this, which is why the bug was survivable rather
+ * than dangerous -- but a listener that can never start is still a listener that does
+ * not work, and "permission granted" would have hidden it if the status screen had been
+ * written the lazy way.
+ */
+const native = requireOptionalNativeModule<SellflowSmsNativeModule>('SellflowSms');
 
 /** True when this build actually contains the native Android listener. */
-export const isNativeListenerAvailable = Platform.OS === 'android' && Boolean(native);
+export const isNativeListenerAvailable = Platform.OS === 'android' && native !== null;
 
 const UNSUPPORTED_STATUS: SmsListenerStatus = {
   permission: 'unsupported',

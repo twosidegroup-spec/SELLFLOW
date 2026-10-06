@@ -506,6 +506,35 @@ describe('payment boundary', () => {
     assert.deepEqual(added, [], 'buildPermission must only ever add RECEIVE_SMS');
   });
 
+  test('the client resolves the native listener through the Expo module registry', () => {
+    // Comment-stripped, because the fix is DOCUMENTED in a comment that names the exact
+    // thing the second assertion forbids. Checking raw text would mean the explanation
+    // of the bug fails the test for the bug.
+    const entry = code(join(REPO, 'modules/sellflow-sms/index.ts'));
+
+    assert.match(
+      entry,
+      /requireOptionalNativeModule<[^>]*>\(\s*'SellflowSms'\s*\)|requireOptionalNativeModule\(\s*'SellflowSms'\s*\)/,
+      'the module must be resolved with requireOptionalNativeModule',
+    );
+    assert.ok(
+      !/NativeModules[^\n]*SellflowSms/.test(entry),
+      'reading NativeModules.SellflowSms cannot work: the module is an Expo Module, ' +
+        'so it registers in the Expo registry and the legacy bridge lookup is always undefined',
+    );
+
+    // And the Kotlin side has to agree, or the name is wrong.
+    const kotlin = read(
+      join(REPO, 'modules/sellflow-sms/android/src/main/java/com/sellflow/sms/SellflowSmsModule.kt'),
+    );
+    assert.match(
+      kotlin,
+      /class SellflowSmsModule\s*:\s*Module\(\)/,
+      'the native module is declared as an Expo Module, which is why the legacy bridge lookup fails',
+    );
+    assert.match(kotlin, /MODULE_NAME\s*=\s*"SellflowSms"/, 'the registered name must match the JS lookup');
+  });
+
   test('the module manifest declares no SMS surface of its own', () => {
     // Everything comes from the plugin. A library manifest arriving through
     // autolinking would make the permission diff invisible, which is what

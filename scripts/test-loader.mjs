@@ -29,6 +29,9 @@ const STUBS = {
   // Same reason: native module, and it drags in a TS-only dependency graph. The
   // stub delegates to Node's own SHA-512, so the algorithm is unchanged.
   'expo-crypto': 'scripts/__stubs__/expo-crypto.mjs',
+  // The SMS bridge resolves its native module through this. Also a native module with
+  // a TS-only graph under node_modules, which Node will not type-strip.
+  'expo-modules-core': 'scripts/__stubs__/expo-modules-core.mjs',
   // Flow-typed and unparseable by Node. Scripts that evaluate the real design
   // tokens need a stand-in for `Platform`.
   'react-native': 'scripts/__stubs__/react-native.mjs',

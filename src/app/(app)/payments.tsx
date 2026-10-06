@@ -131,7 +131,9 @@ export default function PaymentsScreen() {
         {review.count > 0 ? (
           <Card style={{ borderColor: colors.warningBorder }} testID="payments-review-card">
             <View style={{ gap: spacing.sm }}>
-              <Text variant="heading">{`${review.count} payment${review.count === 1 ? '' : 's'} need checking`}</Text>
+              <Text variant="heading">
+              {`${review.count} payment${review.count === 1 ? ' needs' : 's need'} checking`}
+            </Text>
               <Text variant="caption" tone="muted">
                 Money arrived that SellFlow would not attach to an order on its own. Nothing
                 has been applied.
