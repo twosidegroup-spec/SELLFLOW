@@ -56,3 +56,9 @@ yarn-error.*
 # Local device-verification credentials. Written by scripts/device-test-account.mjs so
 # on-device sign-in is possible; never committed.
 .device-test-account.json
+
+# Flutter migration build artifacts
+flutter_app/build/
+flutter_app/.dart_tool/
+flutter_app/android/.gradle/
+flutter_app/android/local.properties
